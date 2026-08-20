@@ -556,6 +556,14 @@ void GameCrimePatrol::updateMouse() {
 			cursor->drawLine(hotspotX, 0, hotspotX, cursor->h, 1);
 		}
 		CursorMan.replaceCursor(cursor->getPixels(), cursor->w, cursor->h, hotspotX, hotspotY, 0);
+		if (_vm->isReelMagic()) {
+			// The cursor art is paletted and would otherwise be drawn against
+			// the system palette, which the ReelMagic path never sets - the
+			// screen is true colour there, so the composite carries the colours
+			// instead. Give the cursor the palette directly or it comes out
+			// solid black.
+			CursorMan.replaceCursorPalette(_palette, 0, 256);
+		}
 		CursorMan.showMouse(true);
 		_oldWhichGun = _whichGun;
 	}

@@ -133,6 +133,14 @@ public:
 	void skipNumberOfFrames(uint32 num) override;
 	bool isFinished() const override;
 	void setPalette(uint8 *palette) override { (void)palette; }
+	void setInputFile(Common::File *input) override;
+
+	/**
+	 * Scene-file bytes that one reported position unit stands for - about three
+	 * pictures' worth, matching the granularity Game::_videoFrameSkip has for
+	 * the .LIB releases so its hit and pause tolerances keep their real size.
+	 */
+	uint32 sceneUnitBytes() const { return _sceneUnit; }
 	bool isPaletteDirty() const override { return false; }
 	void pauseAudio(bool pause) const override;
 	uint32 getCurrentFrame() const override { return _position; }
@@ -144,6 +152,8 @@ private:
 	Video::MPEGPSDecoder *_mpeg = nullptr;
 	Common::SeekableSubReadStream *_clip = nullptr;
 	uint32 _position = 0;
+	uint32 _bytesPerSecond = 0;
+	uint32 _sceneUnit = 1;
 	bool _ended = false;
 	/** VideoDecoder's pause is counted, so track our own state - see pauseAudio(). */
 	mutable bool _paused = false;

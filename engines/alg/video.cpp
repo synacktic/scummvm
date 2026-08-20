@@ -328,6 +328,35 @@ void AlgMpegDecoder::closeClip() {
 	_clip = nullptr;
 }
 
+void AlgMpegDecoder::setInputFile(Common::File *input) {
+	_input = input;
+
+	// Read the program mux rate out of the first pack header. Position has to be
+	// reported in the scene file's byte units, and deriving it from playback
+	// time and this rate is exact - where counting bytes handed to the demuxer
+	// is not, because it prebuffers 150 packets before the first picture.
+	_bytesPerSecond = 0;
+	if (_input) {
+		const int32 saved = _input->pos();
+		_input->seek(0);
+		byte head[12];
+		if (_input->read(head, sizeof(head)) == sizeof(head) &&
+		    head[0] == 0 && head[1] == 0 && head[2] == 1 && head[3] == 0xBA) {
+			// mux_rate is 22 bits, in units of 50 bytes per second
+			const uint32 muxRate = ((head[9] & 0x7F) << 15) | (head[10] << 7) | (head[11] >> 1);
+			_bytesPerSecond = muxRate * 50;
+		}
+		_input->seek(saved);
+	}
+	if (_bytesPerSecond == 0) {
+		warning("AlgMpegDecoder: no pack header at the start, assuming 1.5Mbit/s");
+		_bytesPerSecond = 187500;
+	}
+	// Roughly three pictures at 29.97fps, the granularity the .LIB releases use
+	_sceneUnit = MAX<uint32>(1, (_bytesPerSecond * 3) / 30);
+	debug(1, "ReelMagic stream: %u bytes/s, scene unit %u bytes", _bytesPerSecond, _sceneUnit);
+}
+
 void AlgMpegDecoder::loadVideoRange(uint32 start, uint32 end) {
 	closeClip();
 	_position = 0;
@@ -383,11 +412,10 @@ void AlgMpegDecoder::getNextFrame() {
 		// endOfVideo() is the real signal: once the clip is spent needsUpdate()
 		// goes false, so decodeNextFrame() is never reached to report it.
 		if (_clip && (_ended || _mpeg->endOfVideo())) {
-			// The substream stops exactly ON the scene's end bound, which leaves
-			// Game::getFrame() one short of failing the loop's
-			// "current <= endFrame" test, so the scene would never end. Report
-			// past the bound once the clip is spent.
-			_position = (uint32)_clip->size() + 2;
+			// Push past the scene's end bound so the game loop's
+			// "current <= endFrame" test finally fails; landing exactly on it
+			// would leave the scene running for ever.
+			_position = (uint32)(_clip->size() / _sceneUnit) + 2;
 		}
 		return;
 	}
@@ -422,10 +450,11 @@ void AlgMpegDecoder::getNextFrame() {
 	_width = kDisplayWidth;
 	_height = kDisplayHeight;
 
-	// Bytes consumed, which Game::getFrame() turns into an absolute offset
-	if (_clip) {
-		_position = (uint32)_clip->pos();
-	}
+	// Position from playback time and the mux rate, in scene units. Counting
+	// bytes read would sit a whole prebuffer ahead of the picture - 150 packets,
+	// about 1.5 seconds, which is longer than 110 of Crime Patrol's 476 scenes.
+	const uint32 bytes = (uint32)(((uint64)_mpeg->getTime() * _bytesPerSecond) / 1000);
+	_position = bytes / _sceneUnit;
 }
 
 void AlgMpegDecoder::skipNumberOfFrames(uint32 num) {

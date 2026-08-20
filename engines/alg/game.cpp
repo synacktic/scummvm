@@ -70,9 +70,9 @@ void Game::init() {
 	_reelMagic = _vm->isReelMagic();
 	if (_reelMagic) {
 		_videoDecoder = new AlgMpegDecoder();
-		// The ReelMagic scene file counts in bytes, so one decoder unit is one
-		// scene unit and Game::getFrame() needs no scaling. See video.h.
-		_videoFrameSkip = 1;
+		// _videoFrameSkip is set from the stream once it is open - see
+		// loadMpegFile(). It has to stay the size of a few pictures, because the
+		// hit and pause tolerances are measured in it as well as the position.
 	} else {
 		_videoDecoder = new AlgVideoDecoder();
 	}
@@ -169,6 +169,15 @@ void Game::loadMpegFile(const Common::Path &path) {
 		error("Game::loadMpegFile(): Can't open '%s'", path.toString().c_str());
 	}
 	_videoDecoder->setInputFile(&_libFile);
+
+	// The scene file counts in bytes, so one position unit is however many bytes
+	// the decoder reports per unit - a few pictures' worth, which keeps the hit
+	// and pause tolerances the same real size they have for the .LIB releases.
+	AlgMpegDecoder *mpeg = dynamic_cast<AlgMpegDecoder *>(_videoDecoder);
+	if (mpeg) {
+		_videoFrameSkip = mpeg->sceneUnitBytes();
+		debug("scene unit %u bytes", _videoFrameSkip);
+	}
 }
 
 void Game::updateScreen() {

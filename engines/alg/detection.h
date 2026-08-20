@@ -36,12 +36,21 @@ enum AlgGameType {
 	GType_SPACE_PIRATES,
 };
 
+enum AlgGameFeatures {
+	/**
+	 * The ReelMagic release of a game: one MPEG-1 program stream holding every
+	 * clip, in place of the .LIB video archive, with the scene file carrying
+	 * byte offsets into it rather than frame numbers.
+	 */
+	GF_REELMAGIC = 1 << 0
+};
+
 struct AlgGameDescription {
 	AD_GAME_DESCRIPTION_HELPERS(desc);
 
 	ADGameDescription desc;
 	uint8 gameType;
-
+	uint32 features;
 };
 
 #define GAMEOPTION_SINGLE_SPEED_VERSION		GUIO_GAMEOPTIONS1

@@ -55,6 +55,24 @@ protected:
 
 	Common::File _libFile;
 	Common::HashMap<Common::String, uint32> _libFileEntries;
+	/** The ReelMagic releases play from one MPEG instead of a .LIB archive. */
+	bool _reelMagic = false;
+
+	/**
+	 * ReelMagic compositing. The interface is 8 bit art and the video is RGB, so
+	 * the paletted _screen is kept exactly as the .LIB releases use it and a
+	 * true colour frame is assembled from it at the end of updateScreen():
+	 * wherever _screen still holds _videoKeyIndex the video shows through,
+	 * everywhere else the palette entry wins. That keeps every one of the
+	 * engine's 8 bit drawing calls - and the other six games - untouched.
+	 */
+	Graphics::Surface *_outputScreen = nullptr;
+	uint8 _videoKeyIndex = 0xFF;
+	bool _videoKeyChosen = false;
+
+	/** Palette index that no interface art uses, so it can key the video. */
+	uint8 findUnusedPaletteIndex() const;
+	void compositeReelMagicFrame();
 
 	uint8 *_palette  = nullptr;
 	bool _paletteDirty = false;
@@ -77,6 +95,12 @@ protected:
 	void shutdown();
 	bool pollEvents();
 	void loadLibArchive(const Common::Path &path);
+
+	/**
+	 * The ReelMagic counterpart of loadLibArchive(): there is no directory to
+	 * read, just the one stream that every clip lives in.
+	 */
+	void loadMpegFile(const Common::Path &path);
 	Audio::SeekableAudioStream *loadSoundFile(const Common::Path &path);
 	void playSound(Audio::SeekableAudioStream *stream);
 	bool loadScene(Scene *scene);

@@ -38,6 +38,10 @@ Game::Game(AlgEngine *vm) {
 }
 
 Game::~Game() {
+	if (_outputScreen) {
+		_outputScreen->free();
+		delete _outputScreen;
+	}
 	_libFile.close();
 	_libFileEntries.clear();
 	delete _rnd;
@@ -63,7 +67,15 @@ void Game::init() {
 	_screen = new Graphics::Surface();
 	_rnd = new Common::RandomSource("alg");
 	_screen->create(320, 200, Graphics::PixelFormat::createFormatCLUT8());
-	_videoDecoder = new AlgVideoDecoder();
+	_reelMagic = _vm->isReelMagic();
+	if (_reelMagic) {
+		_videoDecoder = new AlgMpegDecoder();
+		// The ReelMagic scene file counts in bytes, so one decoder unit is one
+		// scene unit and Game::getFrame() needs no scaling. See video.h.
+		_videoFrameSkip = 1;
+	} else {
+		_videoDecoder = new AlgVideoDecoder();
+	}
 	_videoDecoder->setPalette(_palette);
 	_sceneInfo = new SceneInfo();
 }
@@ -128,6 +140,18 @@ void Game::loadLibArchive(const Common::Path &path) {
 }
 
 bool Game::loadScene(Scene *scene) {
+	if (_reelMagic) {
+		// No archive directory to consult: the scene's own bounds are 1-based
+		// byte offsets into the single MPEG, and the clip runs up to the byte
+		// the following one begins at.
+		if (scene->_startFrame == 0) {
+			return false;
+		}
+		debug("loaded scene %s from %u..%u", scene->_name.c_str(), scene->_startFrame, scene->_endFrame);
+		_videoDecoder->loadVideoRange(scene->_startFrame, scene->_endFrame);
+		return true;
+	}
+
 	Common::String sceneFileName = Common::String::format("%s.mm", scene->_name.c_str());
 	auto it = _libFileEntries.find(sceneFileName);
 	if (it != _libFileEntries.end()) {
@@ -139,18 +163,111 @@ bool Game::loadScene(Scene *scene) {
 	}
 }
 
+void Game::loadMpegFile(const Common::Path &path) {
+	debug("loading mpeg stream: %s", path.toString().c_str());
+	if (!_libFile.open(path)) {
+		error("Game::loadMpegFile(): Can't open '%s'", path.toString().c_str());
+	}
+	_videoDecoder->setInputFile(&_libFile);
+}
+
 void Game::updateScreen() {
 	if (!_inMenu) {
 		Graphics::Surface *frame = _videoDecoder->getVideoFrame();
-		_screen->copyRectToSurface(frame->getPixels(), frame->pitch, _videoPosX, _videoPosY, frame->w, frame->h);
+		if (_reelMagic) {
+			// The frame is RGB and the wrong size for the paletted screen, so
+			// leave the key colour here and mix the picture in below, after all
+			// the interface art has been drawn over it.
+			_screen->fillRect(Common::Rect(_videoPosX, _videoPosY,
+			                               _videoPosX + _videoDecoder->getWidth(),
+			                               _videoPosY + _videoDecoder->getHeight()),
+			                  _videoKeyIndex);
+		} else if (frame) {
+			_screen->copyRectToSurface(frame->getPixels(), frame->pitch, _videoPosX, _videoPosY, frame->w, frame->h);
+		}
 	}
 	debug_drawZoneRects();
+
+	if (_reelMagic) {
+		compositeReelMagicFrame();
+		g_system->copyRectToScreen(_outputScreen->getPixels(), _outputScreen->pitch, 0, 0, _outputScreen->w, _outputScreen->h);
+		g_system->updateScreen();
+		return;
+	}
+
 	if (_paletteDirty || _videoDecoder->isPaletteDirty()) {
 		g_system->getPaletteManager()->setPalette(_palette, 0, 256);
 		_paletteDirty = false;
 	}
 	g_system->copyRectToScreen(_screen->getPixels(), _screen->pitch, 0, 0, _screen->w, _screen->h);
 	g_system->updateScreen();
+}
+
+uint8 Game::findUnusedPaletteIndex() const {
+	// Anything the interface art actually draws must survive the composite, so
+	// the key has to be an index none of it uses. The menu background is by far
+	// the largest piece of art, so a colour missing from that is a safe bet;
+	// fall back to 255 if it somehow uses all of them.
+	bool used[256];
+	memset(used, 0, sizeof(used));
+	if (_background && _background->format.bytesPerPixel == 1) {
+		for (int y = 0; y < _background->h; y++) {
+			const byte *line = (const byte *)_background->getBasePtr(0, y);
+			for (int x = 0; x < _background->w; x++) {
+				used[line[x]] = true;
+			}
+		}
+	}
+	for (int i = 255; i >= 0; i--) {
+		if (!used[i]) {
+			return (uint8)i;
+		}
+	}
+	return 0xFF;
+}
+
+void Game::compositeReelMagicFrame() {
+	if (!_videoKeyChosen) {
+		// Deferred until now: the per-game init loads the menu background after
+		// Game::init() runs, and that is what the key is chosen against.
+		_videoKeyIndex = findUnusedPaletteIndex();
+		_videoKeyChosen = true;
+		debug("ReelMagic video key index %d", _videoKeyIndex);
+	}
+
+	const Graphics::PixelFormat format = g_system->getScreenFormat();
+	if (!_outputScreen) {
+		_outputScreen = new Graphics::Surface();
+		_outputScreen->create(_screen->w, _screen->h, format);
+	}
+
+	// The decoder has already scaled the picture into the interface's window
+	Graphics::Surface *frame = _videoDecoder->getVideoFrame();
+
+	for (int y = 0; y < _screen->h; y++) {
+		const byte *src = (const byte *)_screen->getBasePtr(0, y);
+		for (int x = 0; x < _screen->w; x++) {
+			uint32 color;
+			const int vx = x - _videoPosX;
+			const int vy = y - _videoPosY;
+			if (src[x] == _videoKeyIndex && frame && frame->w > 0 && frame->h > 0 &&
+			    vx >= 0 && vy >= 0 && vx < frame->w && vy < frame->h) {
+				const void *p = frame->getBasePtr(vx, vy);
+				color = (frame->format.bytesPerPixel == 2) ? *(const uint16 *)p : *(const uint32 *)p;
+				byte r, g, b;
+				frame->format.colorToRGB(color, r, g, b);
+				color = format.RGBToColor(r, g, b);
+			} else {
+				const uint8 *entry = _palette + src[x] * 3;
+				color = format.RGBToColor(entry[0], entry[1], entry[2]);
+			}
+			if (format.bytesPerPixel == 2) {
+				*(uint16 *)_outputScreen->getBasePtr(x, y) = (uint16)color;
+			} else {
+				*(uint32 *)_outputScreen->getBasePtr(x, y) = color;
+			}
+		}
+	}
 }
 
 uint32 Game::getMsTime() {

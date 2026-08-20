@@ -34,6 +34,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO1(GAMEOPTION_SINGLE_SPEED_VERSION)
 		},
 		GType_CRIME_PATROL,
+		0,
 	},
 	{
 		// Crime Patrol Demo (DOS)
@@ -47,6 +48,21 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO0()
 		},
 		GType_CRIME_PATROL,
+		0,
+	},
+	{
+		// Crime Patrol (ReelMagic) (DOS)
+		{
+			"cpatrol",
+			"ReelMagic",
+			AD_ENTRY1s("CP.MPG", "6fdc1724c73f9f9a8ddb12f87a7890b9", 364041600),
+			Common::EN_ANY,
+			Common::kPlatformDOS,
+			ADGF_NO_FLAGS,
+			GUIO0()
+		},
+		GType_CRIME_PATROL,
+		GF_REELMAGIC,
 	},
 	{
 		// Drug Wars (v1.00) (DOS)
@@ -60,6 +76,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO1(GAMEOPTION_SINGLE_SPEED_VERSION)
 		},
 		GType_DRUG_WARS,
+		0,
 	},
 	{
 		// Drug Wars Demo (DOS)
@@ -73,6 +90,21 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO0()
 		},
 		GType_DRUG_WARS,
+		0,
+	},
+	{
+		// Drug Wars (ReelMagic) (DOS)
+		{
+			"dwars",
+			"ReelMagic",
+			AD_ENTRY1s("DW.MPG", "c212a2575ee26d82bd623327aac355fd", 419548138),
+			Common::EN_ANY,
+			Common::kPlatformDOS,
+			ADGF_NO_FLAGS,
+			GUIO0()
+		},
+		GType_DRUG_WARS,
+		GF_REELMAGIC,
 	},
 	{
 		// Who Shot Johnny Rock? (v1.00) (DOS)
@@ -86,6 +118,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO1(GAMEOPTION_SINGLE_SPEED_VERSION)
 		},
 		GType_WSJR,
+		0,
 	},
 	{
 		// The Last Bounty Hunter (v1.00) (DOS)
@@ -99,6 +132,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO0()
 		},
 		GType_LAST_BOUNTY_HUNTER,
+		0,
 	},
 	{
 		// The Last Bounty Hunter Demo (DOS)
@@ -112,6 +146,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO1(GAMEOPTION_SINGLE_SPEED_VERSION)
 		},
 		GType_LAST_BOUNTY_HUNTER,
+		0,
 	},
 	{
 		// Mad Dog McCree (v1.03a) (DOS)
@@ -125,6 +160,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO0()
 		},
 		GType_MADDOG,
+		0,
 	},
 	{
 		// Mad Dog II: The Lost Gold (v1.00) (DOS)
@@ -138,6 +174,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO1(GAMEOPTION_SINGLE_SPEED_VERSION)
 		},
 		GType_MADDOG2,
+		0,
 	},
 	{
 		// Space Pirates (v1.00) (DOS)
@@ -151,6 +188,7 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO1(GAMEOPTION_SINGLE_SPEED_VERSION)
 		},
 		GType_SPACE_PIRATES,
+		0,
 	},
 	{
 		// Space Pirates Demo (DOS)
@@ -164,9 +202,10 @@ static const AlgGameDescription gameDescriptions[] = {
 			GUIO0()
 		},
 		GType_SPACE_PIRATES,
+		0,
 	},
 
-	{ AD_TABLE_END_MARKER, 0 }
+	{ AD_TABLE_END_MARKER, 0, 0 }
 };
 
 } // End of namespace Alg

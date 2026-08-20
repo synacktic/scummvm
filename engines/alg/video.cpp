@@ -23,6 +23,9 @@
 #include "graphics/surface.h"
 #include "audio/decoders/raw.h"
 #include "alg/video.h"
+#include "common/textconsole.h"
+#include "graphics/surface.h"
+#include "video/mpegps_decoder.h"
 
 namespace Alg {
 
@@ -304,6 +307,145 @@ void AlgVideoDecoder::readAudioData(uint32 size, uint16 rate) {
 	assert(_audioType == 21);
 	(void)_audioType;
 	_audioStream->queuePacket(_input->readStream(size));
+}
+
+// ---------------------------------------------------------------------------
+// AlgMpegDecoder - the ReelMagic releases: one MPEG-1 program stream, clips
+// addressed by byte offset. See the class comment in video.h.
+// ---------------------------------------------------------------------------
+
+AlgMpegDecoder::AlgMpegDecoder() {
+}
+
+AlgMpegDecoder::~AlgMpegDecoder() {
+	closeClip();
+}
+
+void AlgMpegDecoder::closeClip() {
+	delete _mpeg;
+	_mpeg = nullptr;
+	// The decoder owns whatever stream it was given, so the view is gone with it
+	_clip = nullptr;
+}
+
+void AlgMpegDecoder::loadVideoRange(uint32 start, uint32 end) {
+	closeClip();
+	_position = 0;
+	_ended = false;
+
+	if (!_input) {
+		warning("AlgMpegDecoder: no input file set");
+		return;
+	}
+
+	// The scene file counts from one, and a clip runs up to the byte the next
+	// one starts at. Without an end - nothing in the game does that, but be
+	// safe - play to the end of the file.
+	const uint32 first = start > 0 ? start - 1 : 0;
+	const uint32 last = end > first ? end - 1 : (uint32)_input->size();
+	if (first >= (uint32)_input->size()) {
+		warning("AlgMpegDecoder: clip starts past the end of the file (%u)", first);
+		return;
+	}
+
+	// A bounded view is what stops the decoder running on into the next clip:
+	// the clips are merely concatenated, so nothing else marks where to stop.
+	_clip = new Common::SeekableSubReadStream(_input, first, MIN<uint32>(last, (uint32)_input->size()));
+
+	_mpeg = new Video::MPEGPSDecoder();
+	if (!_mpeg->loadStream(_clip)) {
+		warning("AlgMpegDecoder: could not open the clip at %u", first);
+		closeClip();
+		return;
+	}
+	_mpeg->start();
+}
+
+void AlgMpegDecoder::getNextFrame() {
+	if (!_mpeg) {
+		return;
+	}
+
+	// The game loop paces itself at roughly 10fps, which suited ALG's own clips,
+	// but these pictures are 29.97fps and carry their own audio. So let the
+	// decoder's clock decide: catch up on every frame that has come due, and
+	// keep showing the last one when none has.
+	const Graphics::Surface *decoded = nullptr;
+	while (_mpeg->needsUpdate()) {
+		const Graphics::Surface *next = _mpeg->decodeNextFrame();
+		if (!next) {
+			_ended = true;
+			break;
+		}
+		decoded = next;
+	}
+	if (!decoded) {
+		// endOfVideo() is the real signal: once the clip is spent needsUpdate()
+		// goes false, so decodeNextFrame() is never reached to report it.
+		if (_clip && (_ended || _mpeg->endOfVideo())) {
+			// The substream stops exactly ON the scene's end bound, which leaves
+			// Game::getFrame() one short of failing the loop's
+			// "current <= endFrame" test, so the scene would never end. Report
+			// past the bound once the clip is spent.
+			_position = (uint32)_clip->size() + 2;
+		}
+		return;
+	}
+
+	if (!_frame) {
+		_frame = new Graphics::Surface();
+	}
+	if (_frame->w != kDisplayWidth || _frame->h != kDisplayHeight || _frame->format != decoded->format) {
+		_frame->free();
+		_frame->create(kDisplayWidth, kDisplayHeight, decoded->format);
+	}
+
+	// Scale the 352x240 picture into the window the interface is drawn around
+	const uint16 bpp = decoded->format.bytesPerPixel;
+	for (int y = 0; y < kDisplayHeight; y++) {
+		const int sy = y * decoded->h / kDisplayHeight;
+		if (bpp == 2) {
+			const uint16 *src = (const uint16 *)decoded->getBasePtr(0, sy);
+			uint16 *dst = (uint16 *)_frame->getBasePtr(0, y);
+			for (int x = 0; x < kDisplayWidth; x++) {
+				dst[x] = src[x * decoded->w / kDisplayWidth];
+			}
+		} else {
+			const uint32 *src = (const uint32 *)decoded->getBasePtr(0, sy);
+			uint32 *dst = (uint32 *)_frame->getBasePtr(0, y);
+			for (int x = 0; x < kDisplayWidth; x++) {
+				dst[x] = src[x * decoded->w / kDisplayWidth];
+			}
+		}
+	}
+
+	_width = kDisplayWidth;
+	_height = kDisplayHeight;
+
+	// Bytes consumed, which Game::getFrame() turns into an absolute offset
+	if (_clip) {
+		_position = (uint32)_clip->pos();
+	}
+}
+
+void AlgMpegDecoder::skipNumberOfFrames(uint32 num) {
+	for (uint32 i = 0; i < num && !isFinished(); i++) {
+		getNextFrame();
+	}
+}
+
+bool AlgMpegDecoder::isFinished() const {
+	return _ended || !_mpeg || _mpeg->endOfVideo();
+}
+
+void AlgMpegDecoder::pauseAudio(bool pause) const {
+	// The game calls this every iteration with the current state, but
+	// VideoDecoder::pauseVideo() counts its pauses - so passing true repeatedly
+	// stacks the pause level and the picture never resumes. Only act on a change.
+	if (_mpeg && pause != _paused) {
+		_mpeg->pauseVideo(pause);
+		_paused = pause;
+	}
 }
 
 } // End of namespace Alg

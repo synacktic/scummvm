@@ -46,6 +46,10 @@ Common::Platform AlgEngine::getPlatform() const {
 	return _gameDescription->desc.platform;
 }
 
+bool AlgEngine::isReelMagic() const {
+	return (_gameDescription->features & GF_REELMAGIC) != 0;
+}
+
 bool AlgEngine::isDemo() const {
 	return (bool)(_gameDescription->desc.flags & ADGF_DEMO);
 }

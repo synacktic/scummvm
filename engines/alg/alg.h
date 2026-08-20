@@ -51,6 +51,7 @@ public:
 	bool hasFeature(EngineFeature f) const override;
 	Common::Platform getPlatform() const;
 	bool isDemo() const;
+	bool isReelMagic() const;
 	bool useSingleSpeedVideos() const { return _useSingleSpeedVideos; };
 	Common::Error loadGameState(int slot) override;
 	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;

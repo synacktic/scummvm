@@ -82,7 +82,11 @@ void GameDrugWars::init() {
 	_videoPosX = 11;
 	_videoPosY = 2;
 
-	if (_vm->isDemo()) {
+	if (_vm->isReelMagic()) {
+		// One MPEG holds every clip, addressed by byte offsets out of the scene
+		// file - this release has no .LIB archive at all.
+		loadMpegFile("dw.mpg");
+	} else if (_vm->isDemo()) {
 		loadLibArchive("dwdemo.lib");
 	} else if(_vm->useSingleSpeedVideos()) {
 		loadLibArchive("dwss.lib");
@@ -90,7 +94,7 @@ void GameDrugWars::init() {
 		loadLibArchive("dwds.lib");
 	}
 
-	_sceneInfo->loadScnFile("dw.scn");
+	_sceneInfo->loadScnFile(_vm->isReelMagic() ? "dwmpeg.scn" : "dw.scn");
 	_startScene = _sceneInfo->getStartScene();
 
 	registerScriptFunctions();
@@ -115,17 +119,20 @@ void GameDrugWars::init() {
 	_loadSound = loadSoundFile("loaded.8b");
 	_skullSound = loadSoundFile("skull.8b");
 
-	_gun = AlgGraphics::loadScreenCoordAniImage("gun.ani", _palette);
-	_numbers = AlgGraphics::loadAniImage("numbers.ani", _palette);
-	auto bullets = AlgGraphics::loadAniImage("bullets.ani", _palette);
+	// The ReelMagic release ships the same interface art under different
+	// names, prefixed with the game and shortened; the .8b sounds and the
+	// menu background keep theirs.
+	_gun = AlgGraphics::loadScreenCoordAniImage((_vm->isReelMagic() ? "dw_gun.ani" : "gun.ani"), _palette);
+	_numbers = AlgGraphics::loadAniImage((_vm->isReelMagic() ? "dw_num.ani" : "numbers.ani"), _palette);
+	auto bullets = AlgGraphics::loadAniImage((_vm->isReelMagic() ? "dw_ammo.ani" : "bullets.ani"), _palette);
 	_shotIcon = (*bullets)[0];
 	_emptyIcon = (*bullets)[1];
-	auto lives = AlgGraphics::loadAniImage("lives.ani", _palette);
+	auto lives = AlgGraphics::loadAniImage((_vm->isReelMagic() ? "dw_life.ani" : "lives.ani"), _palette);
 	_liveIcon = (*lives)[0];
 	_deadIcon = (*lives)[1];
-	auto difficlt = AlgGraphics::loadScreenCoordAniImage("difficlt.ani", _palette);
+	auto difficlt = AlgGraphics::loadScreenCoordAniImage((_vm->isReelMagic() ? "dw_diff.ani" : "difficlt.ani"), _palette);
 	_difficultyIcon = (*difficlt)[0];
-	auto hole = AlgGraphics::loadScreenCoordAniImage("hole.ani", _palette);
+	auto hole = AlgGraphics::loadScreenCoordAniImage((_vm->isReelMagic() ? "dw_hole.ani" : "hole.ani"), _palette);
 	_bulletholeIcon = (*hole)[0];
 
 	_background = AlgGraphics::loadVgaBackground("dw_menu.vga", _palette);
@@ -642,7 +649,13 @@ void GameDrugWars::displayShotFiredImage(Common::Point *point) {
 		int32 targetX = point->x - _videoPosX;
 		int32 targetY = point->y - _videoPosY;
 		if (targetX > 0 && targetY > 0) {
-			AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), _bulletholeIcon, targetX, targetY);
+			if (_vm->isReelMagic()) {
+				// The ReelMagic picture is RGB, so the 8 bit hole goes on the
+				// paletted screen instead and survives the composite there.
+				AlgGraphics::drawImageCentered(_screen, _bulletholeIcon, point->x, point->y);
+			} else {
+				AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), _bulletholeIcon, targetX, targetY);
+			}
 		}
 	}
 }

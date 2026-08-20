@@ -89,7 +89,21 @@ AlgEngine::~AlgEngine() {
 }
 
 Common::Error AlgEngine::run() {
-	initGraphics(320, 200);
+	if (isReelMagic()) {
+		// The ReelMagic releases mix RGB MPEG pictures with the 8 bit interface
+		// art, so the composite Game::updateScreen() builds needs true colour.
+		Graphics::PixelFormat format(2, 5, 6, 5, 0, 11, 5, 0, 0);
+		Common::List<Graphics::PixelFormat> supported = _system->getSupportedFormats();
+		for (Common::List<Graphics::PixelFormat>::const_iterator it = supported.begin(); it != supported.end(); ++it) {
+			if (it->bytesPerPixel == 2 || it->bytesPerPixel == 4) {
+				format = *it;
+				break;
+			}
+		}
+		initGraphics(320, 200, &format);
+	} else {
+		initGraphics(320, 200);
+	}
 	setDebugger(_debugger);
 	if (ConfMan.hasKey("single_speed_videos")) {
 		_useSingleSpeedVideos = ConfMan.getBool("single_speed_videos");

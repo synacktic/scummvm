@@ -250,30 +250,59 @@ void Game::compositeReelMagicFrame() {
 		_outputScreen->create(_screen->w, _screen->h, format);
 	}
 
+	// Converting a palette entry per pixel is far too slow to keep up with a
+	// 30fps picture, so the whole palette is converted once instead.
+	if (!_paletteColorsValid || _paletteDirty) {
+		for (int i = 0; i < 256; i++) {
+			const uint8 *entry = _palette + i * 3;
+			_paletteColors[i] = format.RGBToColor(entry[0], entry[1], entry[2]);
+		}
+		_paletteColorsValid = true;
+	}
+
 	// The decoder has already scaled the picture into the interface's window
 	Graphics::Surface *frame = _videoDecoder->getVideoFrame();
+	const bool sameFormat = frame && frame->format == format;
 
 	for (int y = 0; y < _screen->h; y++) {
 		const byte *src = (const byte *)_screen->getBasePtr(0, y);
-		for (int x = 0; x < _screen->w; x++) {
-			uint32 color;
-			const int vx = x - _videoPosX;
-			const int vy = y - _videoPosY;
-			if (src[x] == _videoKeyIndex && frame && frame->w > 0 && frame->h > 0 &&
-			    vx >= 0 && vy >= 0 && vx < frame->w && vy < frame->h) {
-				const void *p = frame->getBasePtr(vx, vy);
-				color = (frame->format.bytesPerPixel == 2) ? *(const uint16 *)p : *(const uint32 *)p;
-				byte r, g, b;
-				frame->format.colorToRGB(color, r, g, b);
-				color = format.RGBToColor(r, g, b);
-			} else {
-				const uint8 *entry = _palette + src[x] * 3;
-				color = format.RGBToColor(entry[0], entry[1], entry[2]);
+		const int vy = y - _videoPosY;
+		const bool videoRow = frame && vy >= 0 && vy < frame->h;
+		const void *videoLine = videoRow ? frame->getBasePtr(0, vy) : nullptr;
+
+		if (format.bytesPerPixel == 2) {
+			uint16 *dst = (uint16 *)_outputScreen->getBasePtr(0, y);
+			for (int x = 0; x < _screen->w; x++) {
+				const int vx = x - _videoPosX;
+				if (src[x] == _videoKeyIndex && videoRow && vx >= 0 && vx < frame->w) {
+					const uint16 pixel = ((const uint16 *)videoLine)[vx];
+					if (sameFormat) {
+						dst[x] = pixel;
+					} else {
+						byte r, g, b;
+						frame->format.colorToRGB(pixel, r, g, b);
+						dst[x] = (uint16)format.RGBToColor(r, g, b);
+					}
+				} else {
+					dst[x] = (uint16)_paletteColors[src[x]];
+				}
 			}
-			if (format.bytesPerPixel == 2) {
-				*(uint16 *)_outputScreen->getBasePtr(x, y) = (uint16)color;
-			} else {
-				*(uint32 *)_outputScreen->getBasePtr(x, y) = color;
+		} else {
+			uint32 *dst = (uint32 *)_outputScreen->getBasePtr(0, y);
+			for (int x = 0; x < _screen->w; x++) {
+				const int vx = x - _videoPosX;
+				if (src[x] == _videoKeyIndex && videoRow && vx >= 0 && vx < frame->w) {
+					const uint32 pixel = ((const uint32 *)videoLine)[vx];
+					if (sameFormat) {
+						dst[x] = pixel;
+					} else {
+						byte r, g, b;
+						frame->format.colorToRGB(pixel, r, g, b);
+						dst[x] = format.RGBToColor(r, g, b);
+					}
+				} else {
+					dst[x] = _paletteColors[src[x]];
+				}
 			}
 		}
 	}

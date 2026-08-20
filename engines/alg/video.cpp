@@ -388,6 +388,7 @@ void AlgMpegDecoder::loadVideoRange(uint32 start, uint32 end) {
 		return;
 	}
 	_mpeg->start();
+	debug(2, "ReelMagic clip %u..%u: %u audio track(s)", first, last, _mpeg->getAudioTrackCount());
 }
 
 void AlgMpegDecoder::getNextFrame() {
@@ -399,14 +400,16 @@ void AlgMpegDecoder::getNextFrame() {
 	// but these pictures are 29.97fps and carry their own audio. So let the
 	// decoder's clock decide: catch up on every frame that has come due, and
 	// keep showing the last one when none has.
+	// One picture per call. Draining every frame that has come due looks like
+	// the right thing but is self-defeating: it consumes several frames' worth
+	// of stream, so nothing is due again for as long, and two out of three
+	// pictures get decoded and thrown away.
 	const Graphics::Surface *decoded = nullptr;
-	while (_mpeg->needsUpdate()) {
-		const Graphics::Surface *next = _mpeg->decodeNextFrame();
-		if (!next) {
+	if (_mpeg->needsUpdate()) {
+		decoded = _mpeg->decodeNextFrame();
+		if (!decoded) {
 			_ended = true;
-			break;
 		}
-		decoded = next;
 	}
 	if (!decoded) {
 		// endOfVideo() is the real signal: once the clip is spent needsUpdate()

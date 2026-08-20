@@ -69,6 +69,17 @@ protected:
 	Graphics::Surface *_outputScreen = nullptr;
 	uint8 _videoKeyIndex = 0xFF;
 	bool _videoKeyChosen = false;
+	/** Palette entries pre-converted to screen pixels; rebuilt when it changes. */
+	uint32 _paletteColors[256];
+	bool _paletteColorsValid = false;
+
+	/**
+	 * Milliseconds the main loop aims to spend on a frame. The .LIB releases'
+	 * own clips run at about 10fps, which is what the 100 here was for; the
+	 * ReelMagic pictures are 29.97fps, so at 100 two out of every three would be
+	 * decoded and thrown away.
+	 */
+	uint32 frameIntervalMs() const { return _reelMagic ? 33 : 100; }
 
 	/** Palette index that no interface art uses, so it can key the video. */
 	uint8 findUnusedPaletteIndex() const;

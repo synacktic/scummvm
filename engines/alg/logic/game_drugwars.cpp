@@ -330,7 +330,7 @@ Common::Error GameDrugWars::run() {
 		}
 		_sceneSkipped = false;
 		_paletteDirty = true;
-		_nextFrameTime = getMsTime() + 100;
+		_nextFrameTime = getMsTime() + frameIntervalMs();
 		callScriptFunctionScene(PREOP, scene->_preop, scene);
 		_currentFrame = getFrame(scene);
 		while (_currentFrame <= scene->_endFrame && _curScene == oldscene && !_vm->shouldQuit()) {
@@ -397,7 +397,7 @@ Common::Error GameDrugWars::run() {
 					_videoDecoder->getNextFrame();
 				}
 				remainingMillis = _nextFrameTime - getMsTime();
-				_nextFrameTime = getMsTime() + (remainingMillis > 0 ? remainingMillis : 0) + 100;
+				_nextFrameTime = getMsTime() + (remainingMillis > 0 ? remainingMillis : 0) + frameIntervalMs();
 			}
 			if (remainingMillis > 0) {
 				if (remainingMillis > 15) {

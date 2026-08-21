@@ -132,7 +132,14 @@ public:
 	 */
 	Common::Rational getRate() const { return _playbackRate; }
 
-	/**
+		/**
+	 * Whether all video tracks have finished. Public because callers that mix a
+	 * decoder's output into their own compositing need to know a picture will
+	 * not be followed by another, which isPlaying() alone does not tell them.
+	 */
+	bool endOfVideoTracks() const;
+
+/**
 	 * Returns if the video is currently playing or not.
 	 *
 	 * This is not equivalent to the inverse of endOfVideo(). A video keeps
@@ -949,7 +956,6 @@ protected:
 	 * This is useful if one wants to figure out if they need to buffer all
 	 * remaining audio in a file.
 	 */
-	bool endOfVideoTracks() const;
 
 	/**
 	 * Set _nextVideoTrack to the video track with the lowest start time for the next frame.

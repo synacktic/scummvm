@@ -91,7 +91,11 @@ void GameSpacePirates::init() {
 	_lives = 3;
 	_shots = 10;
 
-	if (_vm->isDemo()) {
+	if (_vm->isReelMagic()) {
+		// One MPEG holds every clip, addressed by byte offsets out of the scene
+		// file instead of by frame numbers out of a .LIB archive.
+		loadMpegFile("sp.mpg");
+	} else if (_vm->isDemo()) {
 		loadLibArchive("sp.lib");
 	} else if(_vm->useSingleSpeedVideos()) {
 		loadLibArchive("spss.lib");
@@ -99,7 +103,11 @@ void GameSpacePirates::init() {
 		loadLibArchive("spds.lib");
 	}
 
-	_sceneInfo->loadScnFile(_vm->isDemo() ? "spacepir.scn" : "sp.scn");
+	if (_vm->isReelMagic()) {
+		_sceneInfo->loadScnFile("spmpeg.scn");
+	} else {
+		_sceneInfo->loadScnFile(_vm->isDemo() ? "spacepir.scn" : "sp.scn");
+	}
 	_startScene = _sceneInfo->getStartScene();
 
 	registerScriptFunctions();
@@ -604,6 +612,14 @@ void GameSpacePirates::updateMouse() {
 			cursor->drawLine(hotspotX, 0, hotspotX, cursor->h, 1);
 		}
 		CursorMan.replaceCursor(cursor->getPixels(), cursor->w, cursor->h, hotspotX, hotspotY, 0);
+		if (_vm->isReelMagic()) {
+			// The cursor art is paletted and would otherwise be drawn against
+			// the system palette, which the ReelMagic path never sets - the
+			// screen is true colour there, so the composite carries the colours
+			// instead. Give the cursor the palette directly or it comes out
+			// solid black.
+			CursorMan.replaceCursorPalette(_palette, 0, 256);
+		}
 		CursorMan.showMouse(true);
 		_oldWhichGun = _whichGun;
 	}
@@ -827,7 +843,13 @@ void GameSpacePirates::displayShotFiredImage(Common::Point *point) {
 		int32 targetX = point->x - _videoPosX - 4;
 		int32 targetY = point->y - _videoPosY - 4;
 		if (targetX > 0 && targetY > 0) {
-			AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), _bulletholeIcon, targetX, targetY);
+			if (_vm->isReelMagic()) {
+				// The ReelMagic picture is RGB, so the 8 bit hole goes on the
+				// paletted screen instead and survives the composite there.
+				AlgGraphics::drawImageCentered(_screen, _bulletholeIcon, point->x - 4, point->y - 4);
+			} else {
+				AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), _bulletholeIcon, targetX, targetY);
+			}
 		}
 	}
 }
@@ -1405,7 +1427,11 @@ void GameSpacePirates::sceneIsoPickAWorld(Scene *scene) {
 		if (_worldDone[world]) {
 			int32 centerX = rect->left + (rect->width() / 2);
 			int32 centerY = rect->top + (rect->height() / 2);
-			AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), (*_gun)[2], centerX - 16, centerY - 24);
+			if (_vm->isReelMagic()) {
+				AlgGraphics::drawImageCentered(_screen, (*_gun)[2], centerX - 16, centerY - 24);
+			} else {
+				AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), (*_gun)[2], centerX - 16, centerY - 24);
+			}
 		}
 		world--;
 	}

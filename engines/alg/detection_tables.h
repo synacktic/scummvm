@@ -191,6 +191,24 @@ static const AlgGameDescription gameDescriptions[] = {
 		0,
 	},
 	{
+		// Space Pirates (ReelMagic) (DOS)
+		// American Laser Games never shipped one. This is a transcode of the DOS
+		// release's own clips into the stream layout the genuine ReelMagic titles
+		// use, built by doc/alg-reelmagic/tools, and the engine plays it the same
+		// way it plays them.
+		{
+			"spirates",
+			"ReelMagic",
+			AD_ENTRY1s("SP.MPG", "e9174ff6f873a71bab2897ae76584c8e", 338333696),
+			Common::EN_ANY,
+			Common::kPlatformDOS,
+			ADGF_NO_FLAGS,
+			GUIO0()
+		},
+		GType_SPACE_PIRATES,
+		GF_REELMAGIC,
+	},
+	{
 		// Space Pirates Demo (DOS)
 		{
 			"spirates",

@@ -31,13 +31,15 @@ namespace Alg {
  * logic against the Windows release's footage. NOT a real release and never
  * to be upstreamed - the DOS game (spmpeg.scn) is the only source of truth.
  *
- * The scene file is the DOS ReelMagic build's spmpeg.scn, verbatim, so every
- * scene and zone bound stays in that file's own units (byte offsets into the
- * original SP.MPG at 20000 bytes per tenth of a second). Only the pictures
- * come from somewhere else: sprm.map names, per scene, the .mpg file that
- * carries its footage and the tenth-of-a-second to start at. Windows clips
- * for the scenes the reissue kept, per-scene extracts of the DOS stream for
- * the rest, so an upgraded source for any scene is a drop-in.
+ * The scene file is the real DOS release's sp.scn, verbatim, so every scene
+ * and zone bound stays in its own units: 29.97fps master frames, three per
+ * .LIB picture, with each clip's first frame at the scene's start value.
+ * Only the pictures come from somewhere else: sprm.map names, per scene, the
+ * .mpg file that carries its footage and the master frame to start at.
+ * Windows clips for the scenes the reissue kept at full length, per-scene
+ * transcodes of the DOS .MM clips for the rest, so an upgraded source for
+ * any scene is a drop-in. (The SPMPEG.SCN/SP.MPG transcode is NOT used - its
+ * scene file is known-broken.)
  *
  * Presentation differs deliberately: no border art - the picture fills the
  * screen at (16,0) 320x218, aspect kept, with an Amiga-style HUD strip in
@@ -76,10 +78,9 @@ protected:
 private:
 	struct MapEntry {
 		Common::String file;
-		uint32 startUnit; // tenths of a second into that file
+		uint32 startUnit; // 29.97fps frames into that file
 	};
 	Common::HashMap<Common::String, MapEntry> _map;
-	uint32 _mapUnit = 20000; // SP.MPG bytes per tenth (UNIT line of sprm.map)
 	uint32 _curStartUnit = 0;
 	AlgMpegDecoder *_mpeg = nullptr;
 

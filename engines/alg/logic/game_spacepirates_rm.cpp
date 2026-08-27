@@ -47,9 +47,10 @@ void GameSpacePiratesRM::init() {
 	assert(_mpeg);
 
 	loadMap();
-	// Zone and pause tolerances are written in the scene file's byte units,
-	// one unit per tenth of a second of the original SP.MPG.
-	_videoFrameSkip = _mapUnit;
+	// sp.scn counts 29.97fps master frames, three per .LIB picture; the decoder
+	// reports positions in the same frames. _videoFrameSkip stays 3, so every
+	// zone and pause tolerance keeps its DOS size.
+	_mpeg->setFrameUnits(true);
 
 	_videoPosX = kDstX;
 	_videoPosY = kDstY;
@@ -73,8 +74,8 @@ void GameSpacePiratesRM::loadMap() {
 		}
 		Common::StringTokenizer tok(line, " ");
 		Common::String word = tok.nextToken();
-		if (word == "UNIT") {
-			_mapUnit = atoi(tok.nextToken().c_str());
+		if (word == "FORMAT") {
+			// informational
 		} else if (word == "MAP") {
 			Common::String scene = tok.nextToken();
 			Common::String path = tok.nextToken();
@@ -95,7 +96,7 @@ void GameSpacePiratesRM::loadMap() {
 			error("GameSpacePiratesRM: bad sprm.map line '%s'", line.c_str());
 		}
 	}
-	debug("sprm.map: %d scenes, %u bytes per tenth", _map.size(), _mapUnit);
+	debug("sprm.map: %d scenes", _map.size());
 }
 
 bool GameSpacePiratesRM::loadScene(Scene *scene) {
@@ -107,15 +108,14 @@ bool GameSpacePiratesRM::loadScene(Scene *scene) {
 		warning("GameSpacePiratesRM: scene %s not in sprm.map", scene->_name.c_str());
 		return false;
 	}
-	// Same expected-length bookkeeping as the single-stream ReelMagic path.
-	const uint32 bytes = scene->_endFrame - scene->_startFrame;
-	const uint32 bps = _mapUnit * 10;
+	// Same expected-length bookkeeping as the other ReelMagic paths.
+	const uint32 span = scene->_endFrame - scene->_startFrame;
 	_timedScene = scene->_name;
 	_sceneStartMs = g_system->getMillis();
-	_sceneExpectMs = bps ? (uint32)(((uint64)bytes * 1000) / bps) : 0;
-	debug("loaded scene %s from %s@%ut (%u bytes, %u ms expected)",
+	_sceneExpectMs = (uint32)(((uint64)span * 1001) / 30);
+	debug("loaded scene %s from %s@%uf (%u frames, %u ms expected)",
 	      scene->_name.c_str(), it->_value.file.c_str(), it->_value.startUnit,
-	      bytes, _sceneExpectMs);
+	      span, _sceneExpectMs);
 	_mpeg->resetFrameCount();
 	_mpeg->loadVideoFile(Common::Path(it->_value.file), it->_value.startUnit);
 	_curStartUnit = it->_value.startUnit;
@@ -123,13 +123,13 @@ bool GameSpacePiratesRM::loadScene(Scene *scene) {
 }
 
 uint32 GameSpacePiratesRM::getFrame(Scene *scene) {
-	// The decoder reports tenths of a second into the current file; the scene
-	// file counts bytes of the original SP.MPG. Time is the common currency.
+	// The decoder reports 29.97fps frames into the current file; sp.scn counts
+	// the same frames with the clip's first frame at scene->_startFrame.
 	const uint32 pos = _videoDecoder->getCurrentFrame();
 	if (pos <= _curStartUnit) {
 		return scene->_startFrame;
 	}
-	return scene->_startFrame + (pos - _curStartUnit) * _mapUnit;
+	return scene->_startFrame + (pos - _curStartUnit);
 }
 
 // ---- coordinates ----------------------------------------------------------
@@ -261,7 +261,7 @@ void GameSpacePiratesRM::debug_drawZoneRects() {
 		}
 	}
 	for (auto &zone : scene->_zones) {
-		if (_currentFrame + 30 * _mapUnit >= zone->_startFrame && _currentFrame <= zone->_endFrame) {
+		if (_currentFrame + 30 >= zone->_startFrame && _currentFrame <= zone->_endFrame) {
 			const bool live = _currentFrame >= zone->_startFrame && _currentFrame <= zone->_endFrame;
 			for (auto &rect : zone->_rects) {
 				Common::Rect r = rect->getInterpolatedRect(zone->_startFrame, zone->_endFrame, _currentFrame);

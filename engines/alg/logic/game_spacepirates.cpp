@@ -92,8 +92,8 @@ void GameSpacePirates::init() {
 	_shots = 10;
 
 	if (_vm->isHybrid()) {
-		// The SPRM build: the scene file still carries SP.MPG byte offsets, but
-		// the footage comes from separate files named by sprm.map. The subclass
+		// The SPRM build: sp.scn's frame numbers drive everything, but the
+		// footage comes from separate files named by sprm.map. The subclass
 		// opens those per scene, so there is no single stream to load here.
 	} else if (_vm->isReelMagic()) {
 		// One MPEG holds every clip, addressed by byte offsets out of the scene
@@ -107,7 +107,11 @@ void GameSpacePirates::init() {
 		loadLibArchive("spds.lib");
 	}
 
-	if (_vm->isReelMagic()) {
+	if (_vm->isHybrid()) {
+		// SPRM plays by the real DOS release's scene file - the SPMPEG.SCN
+		// derived from our SP.MPG transcode is not trusted.
+		_sceneInfo->loadScnFile("sp.scn");
+	} else if (_vm->isReelMagic()) {
 		_sceneInfo->loadScnFile("spmpeg.scn");
 	} else {
 		_sceneInfo->loadScnFile(_vm->isDemo() ? "spacepir.scn" : "sp.scn");

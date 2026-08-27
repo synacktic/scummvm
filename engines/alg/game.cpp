@@ -114,7 +114,7 @@ void Game::pauseGame(bool pause) {
 			     event.kbd.keycode == Common::KEYCODE_PAUSE)) {
 				_paused = false;
 			} else if (event.type == Common::EVENT_MOUSEMOVE) {
-				_mousePos = event.mouse;
+				_mousePos = transformInput(event.mouse);
 			} else if (event.type == Common::EVENT_QUIT ||
 			           event.type == Common::EVENT_RETURN_TO_LAUNCHER) {
 				_paused = false;
@@ -164,8 +164,9 @@ bool Game::pollEvents() {
 				// files and the video placement differ between them.
 				_debug_drawRects = !_debug_drawRects;
 				debug("target rectangles %s", _debug_drawRects ? "on" : "off");
-			} else if (event.kbd.keycode >= Common::KEYCODE_0 && event.kbd.keycode <= Common::KEYCODE_6) {
-				// Section skip for testing; consumed by games that support it.
+			} else if (event.kbd.keycode >= Common::KEYCODE_0 && event.kbd.keycode <= Common::KEYCODE_6 && _vm->isHybrid()) {
+				// Section skip for testing, SPRM only - a real release must not
+				// lose its progress to a stray number key.
 				_debug_warpRequest = event.kbd.keycode - Common::KEYCODE_0;
 			}
 		}

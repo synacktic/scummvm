@@ -129,6 +129,16 @@ private:
 	class MPEGVideoTrack : public VideoTrack, public MPEGStream {
 	public:
 		MPEGVideoTrack(Common::SeekableReadStream *firstPacket);
+		/** First presentation stamp seen, subtracted from every later one */
+		uint32 _firstPts = 0xFFFFFFFF;
+		/**
+		 * Align the video clock to the audio's actual content start, so a
+		 * stream picked up mid-file keeps lip sync: the audio track plays
+		 * from its first kept packet, so that packet's stamp is time zero.
+		 */
+		void setTimeBase(uint32 pts) { _firstPts = pts; }
+		/** One-off trim of the video clock (positive = delay the video). */
+		void nudgeTimeBase(int32 ms) { _firstPts -= ms * 90; }
 		~MPEGVideoTrack();
 
 		bool endOfTrack() const override { return _endOfTrack; }
@@ -243,6 +253,18 @@ private:
 	MPEGStream *getStream(uint32 startCode, Common::SeekableReadStream *packet);
 
 	MPEGPSDemuxer *_demuxer;
+	/** First video PTS seen; audio interleaved earlier than this is dropped */
+	uint32 _firstVideoPts;
+	bool _droppingLeadAudio;
+	bool _audioBaseSet;
+
+public:
+	/**
+	 * Shift the video presentation clock by a measured amount, for a caller
+	 * that observes a constant offset between the shown frame and the audio
+	 * clock (positive ms = video was early, delay it).
+	 */
+	void nudgeVideoTimeBase(int32 ms);
 
 	// A map from stream types to stream handlers
 	typedef Common::HashMap<int, MPEGStream *> StreamMap;

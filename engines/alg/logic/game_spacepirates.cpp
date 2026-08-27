@@ -489,6 +489,7 @@ Common::Error GameSpacePirates::run() {
 			}
 			_currentFrame = getFrame(scene);
 		}
+		reportSceneEnd();
 		// frame limit reached or scene changed, prepare for next scene
 		_hadPause = false;
 		_pauseTime = 0;
@@ -505,6 +506,13 @@ Common::Error GameSpacePirates::run() {
 void GameSpacePirates::newGame() {
 	_holster = false;
 	_shots = 10;
+	// Starting a game has to put the player back to three lives and no score.
+	// resetParams() clears the world and asteroid state but not these, and
+	// changeDifficulty() returns early when the difficulty has not moved, so
+	// after a game over the life indicators stayed dark and the score carried
+	// over into the new game.
+	_lives = 3;
+	_score = 0;
 }
 
 void GameSpacePirates::resetParams() {
@@ -670,14 +678,17 @@ void GameSpacePirates::displayLivesLeft() {
 	for (int i = 0; i < 3; i++) {
 		AlgGraphics::drawImage(_screen, _deadIcon, posX, posY + (i * margin));
 	}
+	// The icons are green, yellow then red down the panel, and the original
+	// loses them in that order - so the topmost is the first to go dark. Pairing
+	// the counts the other way round made red disappear first.
 	if (_lives > 2) {
-		AlgGraphics::drawImage(_screen, _liveIcon3, posX, posY + (margin * 2));
+		AlgGraphics::drawImage(_screen, _liveIcon1, posX, posY);
 	}
 	if (_lives > 1) {
 		AlgGraphics::drawImage(_screen, _liveIcon2, posX, posY + margin);
 	}
 	if (_lives > 0) {
-		AlgGraphics::drawImage(_screen, _liveIcon1, posX, posY);
+		AlgGraphics::drawImage(_screen, _liveIcon3, posX, posY + (margin * 2));
 	}
 	_oldLives = _lives;
 }
@@ -846,6 +857,9 @@ void GameSpacePirates::displayShotFiredImage(Common::Point *point) {
 			if (_vm->isReelMagic()) {
 				// The ReelMagic picture is RGB, so the 8 bit hole goes on the
 				// paletted screen instead and survives the composite there.
+				// Registering it as an overlay mark keeps it up for a comparable
+				// time to the .LIB path, where the decoder's frame holds it.
+				addOverlayMark(_bulletholeIcon, point->x - 4, point->y - 4);
 				AlgGraphics::drawImageCentered(_screen, _bulletholeIcon, point->x - 4, point->y - 4);
 			} else {
 				AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), _bulletholeIcon, targetX, targetY);

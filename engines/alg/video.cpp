@@ -353,13 +353,92 @@ void AlgMpegDecoder::setInputFile(Common::File *input) {
 		_bytesPerSecond = 187500;
 	}
 	// Roughly three pictures at 29.97fps, the granularity the .LIB releases use
-	_sceneUnit = MAX<uint32>(1, (_bytesPerSecond * 3) / 30);
+	// - or one picture, for a script that counts in frames.
+	_sceneUnit = _frameUnits ? MAX<uint32>(1, (uint32)(((uint64)_bytesPerSecond * 1001) / 30000))
+	                         : MAX<uint32>(1, (_bytesPerSecond * 3) / 30);
 	debug(1, "ReelMagic stream: %u bytes/s, scene unit %u bytes", _bytesPerSecond, _sceneUnit);
+}
+
+uint32 AlgMpegDecoder::findEntryPoint(uint32 wantByte) {
+	// Decoding can only pick up at a sequence header - these streams repeat one
+	// per GOP, roughly every 130K - and the demuxer needs to start on a pack.
+	// A GOP is under a second, so starting a shade early is harmless, whereas
+	// starting late would skip the section's first target.
+	if (wantByte == 0 || !_input) {
+		return 0;
+	}
+	const uint32 kWindow = 512 * 1024;
+	const uint32 from = wantByte > kWindow ? wantByte - kWindow : 0;
+	const uint32 len = wantByte - from;
+	byte *buf = new byte[len];
+	_input->seek(from);
+	const uint32 got = _input->read(buf, len);
+	int32 seq = -1;
+	for (uint32 i = 0; i + 3 < got; i++) {
+		if (!buf[i] && !buf[i + 1] && buf[i + 2] == 1 && buf[i + 3] == 0xB3) {
+			seq = (int32)i;
+		}
+	}
+	uint32 res = 0;
+	for (int32 i = seq; i >= 0; i--) {
+		if (!buf[i] && !buf[i + 1] && buf[i + 2] == 1 && buf[i + 3] == 0xBA) {
+			res = from + (uint32)i;
+			break;
+		}
+	}
+	delete[] buf;
+	return res;
+}
+
+void AlgMpegDecoder::loadVideoFile(const Common::Path &path, uint32 startUnit) {
+	closeClip();
+	if (_ownFile) {
+		delete _ownFile;
+		_ownFile = nullptr;
+	}
+	_ownFile = new Common::File();
+	if (!_ownFile->open(path)) {
+		warning("AlgMpegDecoder: can't open '%s'", path.toString().c_str());
+		delete _ownFile;
+		_ownFile = nullptr;
+		return;
+	}
+	setInputFile(_ownFile);
+	// loadVideoRange() counts from one, and the clip runs to the end of the file
+	// - the section's end bound is enforced by the game loop, not by cutting the
+	// stream, so a section that overruns still shows a picture.
+	const uint32 entry = findEntryPoint(startUnit * _sceneUnit);
+	loadVideoRange(entry + 1, (uint32)_ownFile->size() + 1);
+	// Playback time restarts at zero for the substream, so put back what was
+	// skipped: the script's positions are absolute within the file.
+	_positionBias = entry / _sceneUnit;
+	_position = _positionBias;
+
+	// Decoding can only enter at the GOP before the target, but showing the
+	// frames between would fast-forward the picture while the (already
+	// dropped) audio starts - a visible stutter on every section seek. Burn
+	// through them before pacing starts; nobody sees them.
+	if (_mpeg && startUnit > _positionBias) {
+		uint32 discard = startUnit - _positionBias;
+		if (discard > 90)
+			discard = 90;
+		while (discard-- > 0 && !_mpeg->endOfVideo()) {
+			if (!_mpeg->decodeNextFrame())
+				break;
+			_framesDecoded++;
+			_clipFrames++;
+		}
+		const uint32 bytes = (uint32)(((uint64)_mpeg->getTime() * _bytesPerSecond) / 1000);
+		_position = _positionBias + bytes / _sceneUnit;
+	}
+	debug(2, "ReelMagic seek: unit %u -> byte %u (bias %u)", startUnit, entry, _positionBias);
 }
 
 void AlgMpegDecoder::loadVideoRange(uint32 start, uint32 end) {
 	closeClip();
 	_position = 0;
+	_positionBias = 0;
+	_clipFrames = 0;
 	_ended = false;
 
 	if (!_input) {
@@ -400,16 +479,22 @@ void AlgMpegDecoder::getNextFrame() {
 	// but these pictures are 29.97fps and carry their own audio. So let the
 	// decoder's clock decide: catch up on every frame that has come due, and
 	// keep showing the last one when none has.
-	// One picture per call. Draining every frame that has come due looks like
-	// the right thing but is self-defeating: it consumes several frames' worth
-	// of stream, so nothing is due again for as long, and two out of three
-	// pictures get decoded and thrown away.
+	// Catch up on whatever has come due, showing the newest picture. Decoding
+	// only one per call cannot recover from a slow pass through the game loop,
+	// so the video judders while the clip still ends on time - position comes
+	// from playback time, not from frames drawn. The cap keeps a long stall
+	// from fast-forwarding through the clip.
 	const Graphics::Surface *decoded = nullptr;
-	if (_mpeg->needsUpdate()) {
-		decoded = _mpeg->decodeNextFrame();
-		if (!decoded) {
+	int caughtUp = 0;
+	while (_mpeg->needsUpdate() && caughtUp < 4) {
+		const Graphics::Surface *next = _mpeg->decodeNextFrame();
+		if (!next) {
 			_ended = true;
+			break;
 		}
+		decoded = next;
+		_framesDecoded++;
+		caughtUp++;
 	}
 	if (!decoded) {
 		// endOfVideo() is the real signal: once the clip is spent needsUpdate()
@@ -418,7 +503,7 @@ void AlgMpegDecoder::getNextFrame() {
 			// Push past the scene's end bound so the game loop's
 			// "current <= endFrame" test finally fails; landing exactly on it
 			// would leave the scene running for ever.
-			_position = (uint32)(_clip->size() / _sceneUnit) + 2;
+			_position = _positionBias + (uint32)(_clip->size() / _sceneUnit) + 2;
 		}
 		return;
 	}
@@ -426,38 +511,58 @@ void AlgMpegDecoder::getNextFrame() {
 	if (!_frame) {
 		_frame = new Graphics::Surface();
 	}
-	if (_frame->w != kDisplayWidth || _frame->h != kDisplayHeight || _frame->format != decoded->format) {
+	if (_frame->w != _displayW || _frame->h != _displayH || _frame->format != decoded->format) {
 		_frame->free();
-		_frame->create(kDisplayWidth, kDisplayHeight, decoded->format);
+		_frame->create(_displayW, _displayH, decoded->format);
 	}
 
 	// Scale the 352x240 picture into the window the interface is drawn around
 	const uint16 bpp = decoded->format.bytesPerPixel;
-	for (int y = 0; y < kDisplayHeight; y++) {
-		const int sy = y * decoded->h / kDisplayHeight;
+	for (int y = 0; y < _displayH; y++) {
+		const int sy = y * decoded->h / _displayH;
 		if (bpp == 2) {
 			const uint16 *src = (const uint16 *)decoded->getBasePtr(0, sy);
 			uint16 *dst = (uint16 *)_frame->getBasePtr(0, y);
-			for (int x = 0; x < kDisplayWidth; x++) {
-				dst[x] = src[x * decoded->w / kDisplayWidth];
+			for (int x = 0; x < _displayW; x++) {
+				dst[x] = src[x * decoded->w / _displayW];
 			}
 		} else {
 			const uint32 *src = (const uint32 *)decoded->getBasePtr(0, sy);
 			uint32 *dst = (uint32 *)_frame->getBasePtr(0, y);
-			for (int x = 0; x < kDisplayWidth; x++) {
-				dst[x] = src[x * decoded->w / kDisplayWidth];
+			for (int x = 0; x < _displayW; x++) {
+				dst[x] = src[x * decoded->w / _displayW];
 			}
 		}
 	}
 
-	_width = kDisplayWidth;
-	_height = kDisplayHeight;
+	_width = _displayW;
+	_height = _displayH;
+
+	// The shown picture runs a constant ~3 frames ahead of the audio clock
+	// (the B-frame presentation/coded-order offset in the timing path). It is
+	// stable per clip, so measure it once early and trim the video clock; the
+	// probe stays available for verification.
+	_clipFrames++;
+	if (_clipFrames == 20 && _mpeg->getAudioTrackCount() > 0) {
+		const int32 vms = (int32)((uint64)_mpeg->getCurFrame() * 1001 / 30);
+		const int32 ams = (int32)_mpeg->getTime();
+		const int32 skew = vms - ams;
+		if (skew > 40 && skew < 400) {
+			debug(2, "avsync: trimming %+dms video lead", skew);
+			_mpeg->nudgeVideoTimeBase(skew);
+		}
+	}
+	if (gDebugLevel >= 2 && (_clipFrames % 60) == 50 && _mpeg->getAudioTrackCount() > 0) {
+		const int32 vms = (int32)((uint64)_mpeg->getCurFrame() * 1001 / 30);
+		const int32 ams = (int32)_mpeg->getTime();
+		debug(2, "avsync: clipframe %d skew %+dms", _clipFrames, vms - ams);
+	}
 
 	// Position from playback time and the mux rate, in scene units. Counting
 	// bytes read would sit a whole prebuffer ahead of the picture - 150 packets,
 	// about 1.5 seconds, which is longer than 110 of Crime Patrol's 476 scenes.
 	const uint32 bytes = (uint32)(((uint64)_mpeg->getTime() * _bytesPerSecond) / 1000);
-	_position = bytes / _sceneUnit;
+	_position = _positionBias + bytes / _sceneUnit;
 }
 
 void AlgMpegDecoder::skipNumberOfFrames(uint32 num) {

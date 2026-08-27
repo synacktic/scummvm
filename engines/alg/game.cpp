@@ -66,7 +66,9 @@ void Game::init() {
 	_paletteDirty = true;
 	_screen = new Graphics::Surface();
 	_rnd = new Common::RandomSource("alg");
-	_screen->create(320, 200, Graphics::PixelFormat::createFormatCLUT8());
+	// Follow the mode set in AlgEngine::run() rather than assuming the DOS size.
+	_screen->create(g_system->getWidth(), g_system->getHeight(),
+	                Graphics::PixelFormat::createFormatCLUT8());
 	_reelMagic = _vm->isReelMagic();
 	if (_reelMagic) {
 		_videoDecoder = new AlgMpegDecoder();
@@ -89,6 +91,45 @@ void Game::shutdown() {
 	_vm->quitGame();
 }
 
+void Game::pauseGame(bool pause) {
+	if (pause == _paused) {
+		return;
+	}
+	_paused = pause;
+	// The decoder's own pause is what matters: for the .LIB releases it holds
+	// the audio, and for a ReelMagic stream it stops the clock the position is
+	// derived from, so nothing fast-forwards on resume.
+	if (_videoDecoder) {
+		_videoDecoder->pauseAudio(_paused);
+	}
+	if (!_paused) {
+		return;
+	}
+	debug("paused");
+	while (_paused && !_vm->shouldQuit()) {
+		Common::Event event;
+		while (g_system->getEventManager()->pollEvent(event)) {
+			if (event.type == Common::EVENT_KEYDOWN &&
+			    (event.kbd.keycode == Common::KEYCODE_SPACE ||
+			     event.kbd.keycode == Common::KEYCODE_PAUSE)) {
+				_paused = false;
+			} else if (event.type == Common::EVENT_MOUSEMOVE) {
+				_mousePos = event.mouse;
+			} else if (event.type == Common::EVENT_QUIT ||
+			           event.type == Common::EVENT_RETURN_TO_LAUNCHER) {
+				_paused = false;
+			}
+		}
+		g_system->updateScreen();
+		g_system->delayMillis(20);
+	}
+	_paused = false;
+	if (_videoDecoder) {
+		_videoDecoder->pauseAudio(false);
+	}
+	debug("resumed");
+}
+
 bool Game::pollEvents() {
 	Common::Event event;
 	bool hasEvents = false;
@@ -96,6 +137,8 @@ bool Game::pollEvents() {
 		if (event.type == Common::EVENT_MOUSEMOVE) {
 			_mousePos = event.mouse;
 		} else if (event.type == Common::EVENT_LBUTTONDOWN) {
+			_clickPending = true;
+			_clickPos = event.mouse;
 			_leftDown = true;
 			_mousePos = event.mouse;
 		} else if (event.type == Common::EVENT_RBUTTONDOWN) {
@@ -107,6 +150,20 @@ bool Game::pollEvents() {
 		} else if (event.type == Common::EVENT_RBUTTONUP) {
 			_rightDown = false;
 			_mousePos = event.mouse;
+		} else if (event.type == Common::EVENT_KEYDOWN) {
+			_lastKey = event.kbd.keycode;
+			// Nothing handled the keyboard at all before this, which is why the
+			// standard pause key appeared to do nothing.
+			if (event.kbd.keycode == Common::KEYCODE_SPACE ||
+			    event.kbd.keycode == Common::KEYCODE_PAUSE) {
+				pauseGame(!_paused);
+			} else if (event.kbd.keycode == Common::KEYCODE_F5) {
+				// Show where the game thinks its targets are. Handy for
+				// comparing one release against another, since the scene
+				// files and the video placement differ between them.
+				_debug_drawRects = !_debug_drawRects;
+				debug("target rectangles %s", _debug_drawRects ? "on" : "off");
+			}
 		}
 		hasEvents = true;
 	}
@@ -147,7 +204,20 @@ bool Game::loadScene(Scene *scene) {
 		if (scene->_startFrame == 0) {
 			return false;
 		}
-		debug("loaded scene %s from %u..%u", scene->_name.c_str(), scene->_startFrame, scene->_endFrame);
+		// One scene unit is a tenth of a second of stream, so the byte range
+		// says how long the clip should take to play.
+		const uint32 bytes = scene->_endFrame - scene->_startFrame;
+		const uint32 bps = _videoFrameSkip * 10;
+		_timedScene = scene->_name;
+		_sceneStartMs = g_system->getMillis();
+		_sceneExpectMs = bps ? (uint32)(((uint64)bytes * 1000) / bps) : 0;
+		debug("loaded scene %s from %u..%u (%u bytes, %u ms expected)",
+		      scene->_name.c_str(), scene->_startFrame, scene->_endFrame,
+		      bytes, _sceneExpectMs);
+		AlgMpegDecoder *m = dynamic_cast<AlgMpegDecoder *>(_videoDecoder);
+		if (m) {
+			m->resetFrameCount();
+		}
 		_videoDecoder->loadVideoRange(scene->_startFrame, scene->_endFrame);
 		return true;
 	}
@@ -180,6 +250,32 @@ void Game::loadMpegFile(const Common::Path &path) {
 	}
 }
 
+// Called when a scene's play loop exits. A clip that stops well before its byte
+// range implies is the symptom to chase, and this names it.
+void Game::reportSceneEnd() {
+	if (!_reelMagic || _timedScene.empty() || _sceneExpectMs == 0) {
+		return;
+	}
+	const uint32 took = g_system->getMillis() - _sceneStartMs;
+	const int pct = (int)((uint64)took * 100 / _sceneExpectMs);
+	AlgMpegDecoder *mpeg = dynamic_cast<AlgMpegDecoder *>(_videoDecoder);
+	if (mpeg && took > 0) {
+		const uint32 frames = mpeg->framesDecoded();
+		debug("scene %s: %u frames in %u ms = %u.%u fps (29.97 expected)",
+		      _timedScene.c_str(), frames, took,
+		      (unsigned)(frames * 1000 / took),
+		      (unsigned)((frames * 10000 / took) % 10));
+	}
+	if (pct < 85) {
+		warning("scene %s ended early: %u ms of %u ms (%d%%)",
+		        _timedScene.c_str(), took, _sceneExpectMs, pct);
+	} else {
+		debug("scene %s ended: %u ms of %u ms (%d%%)",
+		      _timedScene.c_str(), took, _sceneExpectMs, pct);
+	}
+	_timedScene.clear();
+}
+
 void Game::updateScreen() {
 	if (!_inMenu) {
 		Graphics::Surface *frame = _videoDecoder->getVideoFrame();
@@ -191,11 +287,13 @@ void Game::updateScreen() {
 			                               _videoPosX + _videoDecoder->getWidth(),
 			                               _videoPosY + _videoDecoder->getHeight()),
 			                  _videoKeyIndex);
+			replayOverlayMarks();
 		} else if (frame) {
 			_screen->copyRectToSurface(frame->getPixels(), frame->pitch, _videoPosX, _videoPosY, frame->w, frame->h);
 		}
 	}
 	debug_drawZoneRects();
+	drawInterface();
 
 	if (_reelMagic) {
 		compositeReelMagicFrame();
@@ -233,6 +331,33 @@ uint8 Game::findUnusedPaletteIndex() const {
 		}
 	}
 	return 0xFF;
+}
+
+void Game::addOverlayMark(Graphics::Surface *image, int16 x, int16 y) {
+	if (!image) {
+		return;
+	}
+	OverlayMark mark;
+	mark.image = image;
+	mark.x = x;
+	mark.y = y;
+	mark.when = g_system->getMillis();
+	_overlayMarks.push_back(mark);
+}
+
+void Game::replayOverlayMarks() {
+	// About as long as one of the .LIB releases' 10fps pictures stays up
+	const uint32 kMarkLifetimeMs = 120;
+	const uint32 now = g_system->getMillis();
+	for (uint i = 0; i < _overlayMarks.size();) {
+		if (now - _overlayMarks[i].when > kMarkLifetimeMs) {
+			_overlayMarks.remove_at(i);
+			continue;
+		}
+		AlgGraphics::drawImageCentered(_screen, _overlayMarks[i].image,
+		                               _overlayMarks[i].x, _overlayMarks[i].y);
+		++i;
+	}
 }
 
 void Game::compositeReelMagicFrame() {
@@ -485,27 +610,65 @@ void Game::sceneNxtfrm(Scene *scene) {
 }
 
 // debug methods
+void Game::debug_strokeRect(const Common::Rect &rect, uint8 color, bool emphasize) {
+	_screen->drawLine(rect.left, rect.top, rect.right, rect.top, color);
+	_screen->drawLine(rect.left, rect.top, rect.left, rect.bottom, color);
+	_screen->drawLine(rect.right, rect.bottom, rect.right, rect.top, color);
+	_screen->drawLine(rect.right, rect.bottom, rect.left, rect.bottom, color);
+	if (emphasize) {
+		// Thicken the rects that are live right now, so they read differently
+		// from the ones that are merely coming up.
+		_screen->drawLine(rect.left + 1, rect.top + 1, rect.right - 1, rect.top + 1, color);
+		_screen->drawLine(rect.left + 1, rect.bottom - 1, rect.right - 1, rect.bottom - 1, color);
+		_screen->drawLine(rect.left + 1, rect.top + 1, rect.left + 1, rect.bottom - 1, color);
+		_screen->drawLine(rect.right - 1, rect.top + 1, rect.right - 1, rect.bottom - 1, color);
+	}
+}
+
 void Game::debug_drawZoneRects() {
-	if (_debug_drawRects || debugChannelSet(1, Alg::kAlgDebugGraphics)) {
-		if (_inMenu) {
-			for (auto rect : _subMenuZone->_rects) {
-				_screen->drawLine(rect->left, rect->top, rect->right, rect->top, 1);
-				_screen->drawLine(rect->left, rect->top, rect->left, rect->bottom, 1);
-				_screen->drawLine(rect->right, rect->bottom, rect->right, rect->top, 1);
-				_screen->drawLine(rect->right, rect->bottom, rect->left, rect->bottom, 1);
-			}
-		} else if (_curScene != "") {
-			Scene *targetScene = _sceneInfo->findScene(_curScene);
-			for (auto &zone : targetScene->_zones) {
-				for (auto rect : zone->_rects) {
-					// only draw frames that appear soon or are current
-					if (_currentFrame + 30 >= zone->_startFrame && _currentFrame <= zone->_endFrame) {
-						Common::Rect interpolated = rect->getInterpolatedRect(zone->_startFrame, zone->_endFrame, _currentFrame);
-						_screen->drawLine(interpolated.left, interpolated.top, interpolated.right, interpolated.top, 1);
-						_screen->drawLine(interpolated.left, interpolated.top, interpolated.left, interpolated.bottom, 1);
-						_screen->drawLine(interpolated.right, interpolated.bottom, interpolated.right, interpolated.top, 1);
-						_screen->drawLine(interpolated.right, interpolated.bottom, interpolated.left, interpolated.bottom, 1);
-					}
+	if (!(_debug_drawRects || debugChannelSet(1, Alg::kAlgDebugGraphics))) {
+		return;
+	}
+	// Outline the video window itself. The rect coordinates come from the scene
+	// file in screen space, while the picture is positioned and scaled by the
+	// player, so seeing both together is what makes two releases comparable.
+	if (_videoDecoder) {
+		Common::Rect videoArea(_videoPosX, _videoPosY,
+		                       _videoPosX + _videoDecoder->getWidth(),
+		                       _videoPosY + _videoDecoder->getHeight());
+		debug_strokeRect(videoArea, 1, false);
+	}
+	if (_inMenu) {
+		for (auto rect : _subMenuZone->_rects) {
+			debug_strokeRect(*rect, 1, false);
+		}
+		return;
+	}
+	if (_curScene == "") {
+		return;
+	}
+	Scene *targetScene = _sceneInfo->findScene(_curScene);
+	if (!targetScene) {
+		return;
+	}
+	for (auto &zone : targetScene->_zones) {
+		if (_currentFrame + 30 < zone->_startFrame || _currentFrame > zone->_endFrame) {
+			continue;
+		}
+		bool live = (_currentFrame >= zone->_startFrame && _currentFrame <= zone->_endFrame);
+		for (auto rect : zone->_rects) {
+			Common::Rect interpolated =
+				rect->getInterpolatedRect(zone->_startFrame, zone->_endFrame, _currentFrame);
+			debug_strokeRect(interpolated, 1, live);
+			// A second, inset outline marks the targets that cost the player
+			// something when shot, so they can be told apart from the ones
+			// worth points without needing a second palette colour.
+			bool penalty = (rect->_score == 0) || rect->_rectHit.contains("INNOCENT");
+			if (penalty) {
+				Common::Rect inner(interpolated.left + 2, interpolated.top + 2,
+				                   interpolated.right - 2, interpolated.bottom - 2);
+				if (inner.isValidRect()) {
+					debug_strokeRect(inner, 1, false);
 				}
 			}
 		}

@@ -121,13 +121,37 @@ public:
 	 * scaled into this window on the way out, which also means getWidth() and
 	 * getHeight() keep reporting what the interface art is laid out against.
 	 */
+	// how many pictures were actually put on screen, so judder can be measured
+	// rather than guessed at
+	uint32 framesDecoded() const { return _framesDecoded; }
+	void resetFrameCount() { _framesDecoded = 0; }
+
 	static const int kDisplayWidth = 288;
 	static const int kDisplayHeight = 186;
+	/**
+	 * Scale pictures to this size instead of the interface window the .LIB
+	 * releases use. The Windows reissue wants its own 352x240 untouched.
+	 */
+	void setDisplaySize(int w, int h) { _displayW = w; _displayH = h; }
+	/**
+	 * Report position in single pictures rather than the three-picture units
+	 * the .LIB releases count in. The Windows reissue seeks with
+	 * IMediaSeeking in TIME_FORMAT_FRAME, so its script's numbers are frames.
+	 */
+	void setFrameUnits(bool on) { _frameUnits = on; }
 
 	AlgMpegDecoder();
 	~AlgMpegDecoder() override;
 
 	void loadVideoRange(uint32 start, uint32 end) override;
+	/**
+	 * Play a standalone MPEG file whole. The Windows release ships one file
+	 * per state instead of a single stream. A state is a *section* of its
+	 * file, so startUnit gives the position to begin at; the decoder cannot
+	 * seek, so playback starts at the pack header before the last sequence
+	 * header at or before that point and the position is biased to match.
+	 */
+	void loadVideoFile(const Common::Path &path, uint32 startUnit = 0);
 	void loadVideoFromStream(uint32 offset) override { loadVideoRange(offset, 0); }
 	void getNextFrame() override;
 	void skipNumberOfFrames(uint32 num) override;
@@ -143,17 +167,28 @@ public:
 	uint32 sceneUnitBytes() const { return _sceneUnit; }
 	bool isPaletteDirty() const override { return false; }
 	void pauseAudio(bool pause) const override;
+	bool isEnded() const { return _ended; }
 	uint32 getCurrentFrame() const override { return _position; }
 	bool isTrueColor() const override { return true; }
 
 private:
 	void closeClip();
+	/** Byte offset of the last decodable entry point at or before wantByte */
+	uint32 findEntryPoint(uint32 wantByte);
+
+	uint32 _positionBias = 0;
+	uint32 _clipFrames = 0;
+	bool _frameUnits = false;
 
 	Video::MPEGPSDecoder *_mpeg = nullptr;
+	Common::File *_ownFile = nullptr;
+	int _displayW = kDisplayWidth;
+	int _displayH = kDisplayHeight;
 	Common::SeekableSubReadStream *_clip = nullptr;
 	uint32 _position = 0;
 	uint32 _bytesPerSecond = 0;
 	uint32 _sceneUnit = 1;
+	uint32 _framesDecoded = 0;
 	bool _ended = false;
 	/** VideoDecoder's pause is counted, so track our own state - see pauseAudio(). */
 	mutable bool _paused = false;

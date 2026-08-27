@@ -55,6 +55,9 @@ enum {
 MPEGPSDecoder::MPEGPSDecoder(double decibel) {
 	_decibel = decibel;
 	_demuxer = new MPEGPSDemuxer();
+	_firstVideoPts = 0xFFFFFFFF;
+	_droppingLeadAudio = false;
+	_audioBaseSet = false;
 }
 
 MPEGPSDecoder::~MPEGPSDecoder() {
@@ -86,6 +89,15 @@ void MPEGPSDecoder::close() {
 	VideoDecoder::close();
 	_demuxer->close();
 	_streamMap.clear();
+	_firstVideoPts = 0xFFFFFFFF;
+	_droppingLeadAudio = false;
+	_audioBaseSet = false;
+}
+
+void MPEGPSDecoder::nudgeVideoTimeBase(int32 ms) {
+	for (TrackListIterator it = getTrackListBegin(); it != getTrackListEnd(); it++)
+		if ((*it)->getTrackType() == Track::kTrackTypeVideo)
+			((MPEGVideoTrack *)*it)->nudgeTimeBase(ms);
 }
 
 MPEGPSDecoder::MPEGStream *MPEGPSDecoder::getStream(uint32 startCode, Common::SeekableReadStream *packet) {
@@ -188,6 +200,37 @@ void MPEGPSDecoder::readNextPacket() {
 
 		if (stream) {
 			packet->seek(0);
+
+			// A program stream picked up mid-file starts on a video GOP, but
+			// the audio interleaved at that point belongs to content up to a
+			// second earlier - the muxer lags audio behind video. A clocked
+			// player (DirectShow) presents both by PTS so it never matters;
+			// queueing that audio as-is puts the voice a second ahead of the
+			// lips. Drop audio that predates the first video timestamp.
+			if (stream->getStreamType() == MPEGStream::kStreamTypeVideo &&
+			    pts != 0xFFFFFFFF && _firstVideoPts == 0xFFFFFFFF)
+				_firstVideoPts = pts;
+			if (stream->getStreamType() == MPEGStream::kStreamTypeAudio) {
+				if (pts != 0xFFFFFFFF) {
+					const bool wasDropping = _droppingLeadAudio;
+					_droppingLeadAudio =
+					    (_firstVideoPts == 0xFFFFFFFF) || (pts < _firstVideoPts);
+					if (!_droppingLeadAudio && !_audioBaseSet) {
+						_audioBaseSet = true;
+						if (wasDropping)
+							debug(2, "MPEGPS: lead audio dropped; first kept packet %+d ms vs video",
+							      (int)((pts - _firstVideoPts) / 90));
+						// Rebase the video clock onto the audio content start.
+						for (TrackListIterator it = getTrackListBegin(); it != getTrackListEnd(); it++)
+							if ((*it)->getTrackType() == Track::kTrackTypeVideo)
+								((MPEGVideoTrack *)*it)->setTimeBase(pts);
+					}
+				}
+				if (_droppingLeadAudio) {
+					delete packet;
+					continue;
+				}
+			}
 
 			bool done = stream->sendPacket(packet, pts, dts);
 
@@ -707,7 +750,17 @@ bool MPEGPSDecoder::MPEGVideoTrack::sendPacket(Common::SeekableReadStream *packe
 		// but it might not be.
 
 		if (_framePts != 0xFFFFFFFF) {
-			_nextFrameStartTime = Audio::Timestamp(_framePts / 90, 27000000);
+			// Presentation stamps run from the start of the file, but the clock
+			// this is checked against runs from the start of playback. Those
+			// are the same thing only when the stream is played from its
+			// beginning; picking it up part way through - which is how a
+			// program stream with no index gets seeked - would otherwise leave
+			// the first picture due minutes in the future, and nothing would
+			// decode until then. So measure from the first stamp seen.
+			if (_firstPts == 0xFFFFFFFF || _framePts < _firstPts) {
+				_firstPts = _framePts;
+			}
+			_nextFrameStartTime = Audio::Timestamp((_framePts - _firstPts) / 90, 27000000);
 		} else {
 			_nextFrameStartTime = _nextFrameStartTime.addFrames(framePeriod);
 		}
@@ -726,9 +779,24 @@ bool MPEGPSDecoder::MPEGVideoTrack::sendPacket(Common::SeekableReadStream *packe
 }
 
 void MPEGPSDecoder::MPEGVideoTrack::findDimensions(Common::SeekableReadStream *firstPacket) {
-	// First, check for the picture start code
-	if (firstPacket->readUint32BE() != 0x1B3)
-		error("Failed to detect MPEG sequence start");
+	// First, find the sequence header. It normally starts the packet, but a
+	// stream that is picked up part way through - seeking into a program
+	// stream that cannot be indexed - opens on the tail of a picture, and the
+	// header follows a little way in.
+	if (firstPacket->readUint32BE() != 0x1B3) {
+		uint32 code = 0xFFFFFFFF;
+		bool found = false;
+		firstPacket->seek(0);
+		while (!firstPacket->eos()) {
+			code = (code << 8) | firstPacket->readByte();
+			if (code == 0x1B3) {
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			error("Failed to detect MPEG sequence start");
+	}
 
 	// This is part of the bitstream, but there's really no purpose
 	// to use Common::BitStream just for this: 12 bits width, 12 bits

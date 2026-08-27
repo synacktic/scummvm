@@ -22,6 +22,7 @@
 #ifndef ALG_GAME_H
 #define ALG_GAME_H
 
+#include "common/keyboard.h"
 #include "common/random.h"
 
 #include "audio/audiostream.h"
@@ -99,6 +100,15 @@ protected:
 	bool _leftDown = false;
 	bool _rightDown = false;
 	Common::Point _mousePos;
+	/**
+	 * Latched on the press itself. Testing _leftDown misses a click whose
+	 * press and release land in the same poll, which is how synthetic input
+	 * and very quick taps arrive.
+	 */
+	/** Last key pressed, for a game that wants keys the base does not use. */
+	Common::KeyCode _lastKey = Common::KEYCODE_INVALID;
+	bool _clickPending = false;
+	Common::Point _clickPos;
 
 	const uint32 _pauseDiffScale[3] = {0x10000, 0x8000, 0x4000};
 	const uint32 _rectDiffScale[3] = {0x10000, 0x0C000, 0x8000};
@@ -112,9 +122,41 @@ protected:
 	 * read, just the one stream that every clip lives in.
 	 */
 	void loadMpegFile(const Common::Path &path);
+
+	// Timing a ReelMagic scene against what its byte range implies, so a clip
+	// that ends early can be named rather than guessed at.
+	void reportSceneEnd();
+
+	/**
+	 * Freeze playback so the screen can be studied. Holds inside the call,
+	 * still servicing events, until the key is pressed again.
+	 */
+	void pauseGame(bool pause);
+
+	/**
+	 * Marks drawn over the ReelMagic picture - bullet holes, and the trail of
+	 * them that makes up an enemy's shot. The key colour is refilled every
+	 * frame, so a mark drawn straight onto the screen survives only one 30fps
+	 * frame. The .LIB releases draw onto the decoder's own frame, which at
+	 * 10fps keeps a mark up about a tenth of a second, so these are replayed
+	 * for a comparable time instead.
+	 */
+	struct OverlayMark {
+		Graphics::Surface *image;
+		int16 x, y;
+		uint32 when;
+	};
+	Common::Array<OverlayMark> _overlayMarks;
+	void addOverlayMark(Graphics::Surface *image, int16 x, int16 y);
+	void replayOverlayMarks();
+	bool _paused = false;
+
+	Common::String _timedScene;
+	uint32 _sceneStartMs = 0;
+	uint32 _sceneExpectMs = 0;
 	Audio::SeekableAudioStream *loadSoundFile(const Common::Path &path);
 	void playSound(Audio::SeekableAudioStream *stream);
-	bool loadScene(Scene *scene);
+	virtual bool loadScene(Scene *scene);
 	virtual void updateScreen();
 	uint32 getMsTime();
 	bool fired(Common::Point *point);
@@ -122,6 +164,12 @@ protected:
 	uint32 getFrame(Scene *scene);
 	int8 skipToNewScene(Scene *scene);
 	virtual void debug_drawZoneRects();
+	/**
+	 * Draw the cursor, ammo and score. Called with the video area still
+	 * holding the key colour, so anything drawn here survives the mix.
+	 */
+	virtual void drawInterface() {}
+	void debug_strokeRect(const Common::Rect &rect, uint8 color, bool emphasize);
 
 	// Script functions: Zone
 	void zoneGlobalHit(Common::Point *point);

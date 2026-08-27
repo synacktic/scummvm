@@ -30,6 +30,7 @@ static const PlainGameDescriptor algGames[] = {
 	{ "maddog", "Mad Dog McCree" },
 	{ "johnroc", "Who Shot Johnny Rock?" },
 	{ "spirates", "Space Pirates" },
+	{ "spwin", "Space Pirates (Digital Leisure, Windows)" },
 	{ "maddog2", "Mad Dog II: The Lost Gold" },
 	{ "cpatrol", "Crime Patrol" },
 	{ "dwars", "Crime Patrol 2: Drug Wars" },

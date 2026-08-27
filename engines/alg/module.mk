@@ -13,7 +13,8 @@ MODULE_OBJS := \
 	logic/game_johnnyrock.o \
 	logic/game_maddog.o \
 	logic/game_maddog2.o \
-	logic/game_spacepirates.o
+	logic/game_spacepirates.o \
+	logic/game_spacepirates_win.o
 
 MODULE_DIRS += \
 	engines/alg

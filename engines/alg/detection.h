@@ -42,7 +42,12 @@ enum AlgGameFeatures {
 	 * clip, in place of the .LIB video archive, with the scene file carrying
 	 * byte offsets into it rather than frame numbers.
 	 */
-	GF_REELMAGIC = 1 << 0
+	GF_REELMAGIC = 1 << 0,
+	/**
+	 * The Digital Leisure Windows reissue: one MPEG-1 file per state instead of
+	 * a single stream, and a scene file recovered from the executable.
+	 */
+	GF_WINDOWS = 1 << 1
 };
 
 struct AlgGameDescription {

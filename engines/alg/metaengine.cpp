@@ -54,6 +54,10 @@ bool AlgEngine::isWindows() const {
 	return (_gameDescription->features & GF_WINDOWS) != 0;
 }
 
+bool AlgEngine::isHybrid() const {
+	return (_gameDescription->features & GF_HYBRID) != 0;
+}
+
 bool AlgEngine::isDemo() const {
 	return (bool)(_gameDescription->desc.flags & ADGF_DEMO);
 }

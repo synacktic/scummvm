@@ -47,6 +47,11 @@ public:
 	bool _debug_drawRects = false;
 	bool _debug_godMode = false;
 	bool _debug_unlimitedAmmo = false;
+	/**
+	 * Section skip for testing: pollEvents() latches number keys here and a
+	 * game that supports warping consumes the value from its scene loop.
+	 */
+	int _debug_warpRequest = -1;
 
 protected:
 	AlgEngine *_vm = nullptr;
@@ -161,7 +166,14 @@ protected:
 	uint32 getMsTime();
 	bool fired(Common::Point *point);
 	Rect *checkZone(Zone *zone, Common::Point *point);
-	uint32 getFrame(Scene *scene);
+	virtual uint32 getFrame(Scene *scene);
+	/**
+	 * Every mouse event passes through here before the game logic sees it. A
+	 * game whose scene file was written for a different screen layout maps the
+	 * physical position into the scene file's own space, and then rects, menu
+	 * boxes and the hardcoded cursor regions all work untouched.
+	 */
+	virtual Common::Point transformInput(const Common::Point &point) const { return point; }
 	int8 skipToNewScene(Scene *scene);
 	virtual void debug_drawZoneRects();
 	/**

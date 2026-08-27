@@ -33,6 +33,7 @@
 #include "alg/logic/game_maddog.h"
 #include "alg/logic/game_maddog2.h"
 #include "alg/logic/game_spacepirates.h"
+#include "alg/logic/game_spacepirates_rm.h"
 #include "alg/logic/game_spacepirates_win.h"
 
 namespace Alg {
@@ -81,6 +82,11 @@ AlgEngine::AlgEngine(OSystem *syst, const AlgGameDescription *gd)
 			// The Windows reissue is a different program with the same content,
 			// so it gets its own logic rather than flags inside the DOS one.
 			_game = new GameSpacePiratesWin(this, gd);
+		} else if (isHybrid()) {
+			// SPRM: the DOS logic playing the Windows release's footage.
+			GameSpacePirates *game = new GameSpacePiratesRM(this, gd);
+			_debugger = new DebuggerSpacePirates(game);
+			_game = game;
 		} else {
 			GameSpacePirates *game = new GameSpacePirates(this, gd);
 			_debugger = new DebuggerSpacePirates(game);
@@ -110,7 +116,8 @@ Common::Error AlgEngine::run() {
 		// The Windows reissue draws its own 352x240 picture rather than the
 		// DOS releases' 320x200 screen, so give it the picture's own size and
 		// leave the video unscaled.
-		initGraphics(isWindows() ? 352 : 320, isWindows() ? 240 : 200, &format);
+		const bool fullPicture = isWindows() || isHybrid();
+		initGraphics(fullPicture ? 352 : 320, fullPicture ? 240 : 200, &format);
 	} else {
 		initGraphics(320, 200);
 	}

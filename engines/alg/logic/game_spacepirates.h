@@ -56,7 +56,7 @@ public:
 	Common::Error run() override;
 	void debug_warpTo(int val);
 
-private:
+protected:
 	void init() override;
 	void registerScriptFunctions();
 	void verifyScriptFunctions();
@@ -148,15 +148,15 @@ private:
 	// base functions
 	void newGame();
 	void resetParams();
-	void doMenu();
+	virtual void doMenu();
 	void changeDifficulty(uint8 newDifficulty);
-	void showDifficulty(uint8 newDifficulty, bool updateCursor);
+	virtual void showDifficulty(uint8 newDifficulty, bool updateCursor);
 	void updateCursor();
 	void updateMouse();
 	void moveMouse();
-	void displayLivesLeft();
-	void displayScores();
-	void displayShotsLeft();
+	virtual void displayLivesLeft();
+	virtual void displayScores();
+	virtual void displayShotsLeft();
 	bool weaponDown();
 	bool saveState(Common::OutSaveFile *saveFile) override;
 	bool loadState(Common::InSaveFile *inSaveFile) override;
@@ -165,8 +165,8 @@ private:
 	// misc game functions
 	void playErrorSound();
 	void displayShotFiredImage();
-	void displayShotFiredImage(Common::Point *point);
-	void displayShotLine(uint16 startX, uint16 startY, uint16 endX, uint16 endY);
+	virtual void displayShotFiredImage(Common::Point *point);
+	virtual void displayShotLine(uint16 startX, uint16 startY, uint16 endX, uint16 endY);
 	void displayMultipleShotLines();
 	void enableVideoFadeIn();
 	uint16 sceneToNumber(Common::String sceneName);
@@ -222,6 +222,7 @@ private:
 
 	// Script functions: Scene InsOps
 	void sceneIsoPickAWorld(Scene *scene);
+	virtual void drawWorldCrossout(int32 centerX, int32 centerY);
 	void sceneIsoSetWorldGotTo(Scene *scene);
 
 	// Script functions: Scene NxtScn

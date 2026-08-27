@@ -134,22 +134,23 @@ bool Game::pollEvents() {
 	Common::Event event;
 	bool hasEvents = false;
 	while (g_system->getEventManager()->pollEvent(event)) {
+		const Common::Point gameMouse = transformInput(event.mouse);
 		if (event.type == Common::EVENT_MOUSEMOVE) {
-			_mousePos = event.mouse;
+			_mousePos = gameMouse;
 		} else if (event.type == Common::EVENT_LBUTTONDOWN) {
 			_clickPending = true;
-			_clickPos = event.mouse;
+			_clickPos = gameMouse;
 			_leftDown = true;
-			_mousePos = event.mouse;
+			_mousePos = gameMouse;
 		} else if (event.type == Common::EVENT_RBUTTONDOWN) {
 			_rightDown = true;
-			_mousePos = event.mouse;
+			_mousePos = gameMouse;
 		} else if (event.type == Common::EVENT_LBUTTONUP) {
 			_leftDown = false;
-			_mousePos = event.mouse;
+			_mousePos = gameMouse;
 		} else if (event.type == Common::EVENT_RBUTTONUP) {
 			_rightDown = false;
-			_mousePos = event.mouse;
+			_mousePos = gameMouse;
 		} else if (event.type == Common::EVENT_KEYDOWN) {
 			_lastKey = event.kbd.keycode;
 			// Nothing handled the keyboard at all before this, which is why the
@@ -163,6 +164,9 @@ bool Game::pollEvents() {
 				// files and the video placement differ between them.
 				_debug_drawRects = !_debug_drawRects;
 				debug("target rectangles %s", _debug_drawRects ? "on" : "off");
+			} else if (event.kbd.keycode >= Common::KEYCODE_0 && event.kbd.keycode <= Common::KEYCODE_6) {
+				// Section skip for testing; consumed by games that support it.
+				_debug_warpRequest = event.kbd.keycode - Common::KEYCODE_0;
 			}
 		}
 		hasEvents = true;

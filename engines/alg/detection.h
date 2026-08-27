@@ -47,7 +47,12 @@ enum AlgGameFeatures {
 	 * The Digital Leisure Windows reissue: one MPEG-1 file per state instead of
 	 * a single stream, and a scene file recovered from the executable.
 	 */
-	GF_WINDOWS = 1 << 1
+	GF_WINDOWS = 1 << 1,
+	/**
+	 * SPRM: our own hybrid Space Pirates build for testing the DOS logic
+	 * against the Windows release's footage. Never a real release.
+	 */
+	GF_HYBRID = 1 << 2
 };
 
 struct AlgGameDescription {

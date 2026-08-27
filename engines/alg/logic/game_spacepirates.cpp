@@ -91,7 +91,11 @@ void GameSpacePirates::init() {
 	_lives = 3;
 	_shots = 10;
 
-	if (_vm->isReelMagic()) {
+	if (_vm->isHybrid()) {
+		// The SPRM build: the scene file still carries SP.MPG byte offsets, but
+		// the footage comes from separate files named by sprm.map. The subclass
+		// opens those per scene, so there is no single stream to load here.
+	} else if (_vm->isReelMagic()) {
 		// One MPEG holds every clip, addressed by byte offsets out of the scene
 		// file instead of by frame numbers out of a .LIB archive.
 		loadMpegFile("sp.mpg");
@@ -420,6 +424,16 @@ Common::Error GameSpacePirates::run() {
 		callScriptFunctionScene(PREOP, scene->_preop, scene);
 		_currentFrame = getFrame(scene);
 		while (_currentFrame <= scene->_endFrame && _curScene == oldscene && !_vm->shouldQuit()) {
+			if (_debug_warpRequest >= 0) {
+				// Number keys 0-6, latched by pollEvents(). Same destinations as
+				// the debugger's warpTo command.
+				int warp = _debug_warpRequest;
+				_debug_warpRequest = -1;
+				debug_warpTo(warp);
+				if (_curScene != oldscene) {
+					break;
+				}
+			}
 			updateMouse();
 			callScriptFunctionScene(SHOWMSG, scene->_scnmsg, scene);
 			callScriptFunctionScene(INSOP, scene->_insop, scene);
@@ -1433,6 +1447,14 @@ void GameSpacePirates::scenePsoSetWorldGotTo(Scene *scene) {
 	_worldGotTo[_currentWorld] = sceneNum;
 }
 
+void GameSpacePirates::drawWorldCrossout(int32 centerX, int32 centerY) {
+	if (_vm->isReelMagic()) {
+		AlgGraphics::drawImageCentered(_screen, (*_gun)[2], centerX - 16, centerY - 24);
+	} else {
+		AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), (*_gun)[2], centerX - 16, centerY - 24);
+	}
+}
+
 // Script functions: Scene InsOps
 void GameSpacePirates::sceneIsoPickAWorld(Scene *scene) {
 	Zone *zone = scene->_zones[0];
@@ -1441,11 +1463,7 @@ void GameSpacePirates::sceneIsoPickAWorld(Scene *scene) {
 		if (_worldDone[world]) {
 			int32 centerX = rect->left + (rect->width() / 2);
 			int32 centerY = rect->top + (rect->height() / 2);
-			if (_vm->isReelMagic()) {
-				AlgGraphics::drawImageCentered(_screen, (*_gun)[2], centerX - 16, centerY - 24);
-			} else {
-				AlgGraphics::drawImageCentered(_videoDecoder->getVideoFrame(), (*_gun)[2], centerX - 16, centerY - 24);
-			}
+			drawWorldCrossout(centerX, centerY);
 		}
 		world--;
 	}

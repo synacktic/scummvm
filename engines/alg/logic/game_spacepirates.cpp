@@ -108,9 +108,10 @@ void GameSpacePirates::init() {
 	}
 
 	if (_vm->isHybrid()) {
-		// SPRM plays by the real DOS release's scene file - the SPMPEG.SCN
-		// derived from our SP.MPG transcode is not trusted.
-		_sceneInfo->loadScnFile("sp.scn");
+		// SPRM plays by sprm.scn: the real DOS release's sp.scn with every
+		// Windows-mapped scene's frame values rewritten into its clip's own
+		// timeline by gen_sprm.py. Logic, zones and rects are SP.SCN's.
+		_sceneInfo->loadScnFile("sprm.scn");
 	} else if (_vm->isReelMagic()) {
 		_sceneInfo->loadScnFile("spmpeg.scn");
 	} else {

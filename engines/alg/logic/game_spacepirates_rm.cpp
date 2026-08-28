@@ -167,6 +167,30 @@ void GameSpacePiratesRM::displayShotFiredImage(Common::Point *point) {
 	}
 }
 
+bool GameSpacePiratesRM::weaponDown() {
+	return _rightDown;
+}
+
+// Stretch-blit a region of the border art (DOS coordinates) to a screen rect.
+// Used for the MENU and RELOAD button labels, so the strip shows the same
+// affordances the DOS border did, in the spots the script already listens on.
+void GameSpacePiratesRM::drawArtChip(int16 srcL, int16 srcT, int16 srcR, int16 srcB,
+                                     int16 dstL, int16 dstT, int16 dstR, int16 dstB) {
+	const int sw = srcR - srcL, sh = srcB - srcT;
+	const int dw = dstR - dstL, dh = dstB - dstT;
+	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 || !_background) {
+		return;
+	}
+	for (int y = 0; y < dh; y++) {
+		const int sy = CLIP<int>(srcT + y * sh / dh, 0, _background->h - 1);
+		const byte *src = (const byte *)_background->getBasePtr(0, sy);
+		byte *dst = (byte *)_screen->getBasePtr(0, dstT + y);
+		for (int x = 0; x < dw; x++) {
+			dst[dstL + x] = src[CLIP<int>(srcL + x * sw / dw, 0, _background->w - 1)];
+		}
+	}
+}
+
 void GameSpacePiratesRM::drawWorldCrossout(int32 centerX, int32 centerY) {
 	const Common::Point s = dosToScreen(centerX, centerY);
 	AlgGraphics::drawImageCentered(_screen, (*_gun)[2], s.x - 16, s.y - 24);
@@ -386,8 +410,14 @@ void GameSpacePiratesRM::drawHud() {
 	// The strip lives below the picture, so it can never cover a target.
 	_screen->fillRect(Common::Rect(0, kHudTop, _screen->w, _screen->h), 0);
 
-	const int panelW = 250;
-	const int panelX = (_screen->w - panelW) / 2;
+	// The DOS border's MENU and RELOAD labels, at the spots their input
+	// already lands: the menu box's lower half maps into the strip's left
+	// end, and the holster region into its right.
+	drawArtChip(10, 189, 48, 200, 17, kHudTop + 1, 66, _screen->h - 1);
+	drawArtChip(249, 189, 299, 200, 300, kHudTop + 1, 351, _screen->h - 1);
+
+	const int panelW = 222;
+	const int panelX = 72;
 	const int panelY = kHudTop + 1;
 	const int panelH = _screen->h - panelY - 1;
 	_screen->fillRect(Common::Rect(panelX, panelY, panelX + panelW, panelY + panelH), _hudCol[kHudPanel]);

@@ -449,6 +449,11 @@ Common::Error GameSpacePirates::run() {
 			if (fired(&firedCoords)) {
 				if (!_holster) {
 					Rect *hitGlobalRect = checkZone(_menuZone, &firedCoords);
+					if (hitGlobalRect == nullptr && _vm->isHybrid() && !_gameInProgress) {
+						// SPRM draws no border art, so outside a game there is
+						// no visible menu button: any click brings the menu up.
+						hitGlobalRect = _menuZone->_rects[0];
+					}
 					if (hitGlobalRect != nullptr) {
 						callScriptFunctionRectHit(hitGlobalRect->_rectHit, hitGlobalRect);
 					} else if (_shots > 0) {

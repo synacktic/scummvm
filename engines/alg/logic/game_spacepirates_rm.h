@@ -74,6 +74,9 @@ protected:
 	void displayShotsLeft() override {}
 	void displayShotFiredImage(Common::Point *point) override;
 	void drawWorldCrossout(int32 centerX, int32 centerY) override;
+	// For now a right click reloads wherever it lands - there is no visible
+	// holster region without the border art.
+	bool weaponDown() override;
 
 private:
 	struct MapEntry {
@@ -92,6 +95,8 @@ private:
 	// Amiga-style HUD
 	void hudInit();
 	void drawHud();
+	void drawArtChip(int16 srcL, int16 srcT, int16 srcR, int16 srcB,
+	                 int16 dstL, int16 dstT, int16 dstR, int16 dstB);
 	void drawSevenSegDigit(int x, int y, int h, int digit, uint8 on, uint8 off);
 	enum HudColor {
 		kHudPanel = 0,

@@ -157,7 +157,7 @@ protected:
 	virtual void displayLivesLeft();
 	virtual void displayScores();
 	virtual void displayShotsLeft();
-	bool weaponDown();
+	virtual bool weaponDown();
 	bool saveState(Common::OutSaveFile *saveFile) override;
 	bool loadState(Common::InSaveFile *inSaveFile) override;
 	Zone *checkZones(Scene *scene, Rect *&hitRect, Common::Point *point);

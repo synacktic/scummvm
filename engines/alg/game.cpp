@@ -21,6 +21,7 @@
 
 #include "audio/audiostream.h"
 #include "audio/decoders/raw.h"
+#include "common/config-manager.h"
 #include "common/events.h"
 #include "common/substream.h"
 #include "graphics/cursorman.h"
@@ -59,6 +60,12 @@ Game::~Game() {
 }
 
 void Game::init() {
+	if (ConfMan.hasKey("god_mode")) {
+		_debug_godMode = ConfMan.getBool("god_mode");
+		if (_debug_godMode) {
+			debug("god mode on (god_mode=true in the target's configuration)");
+		}
+	}
 	_inMenu = false;
 	_palette = new uint8[257 * 3]();
 	// blue for rect display
@@ -164,6 +171,11 @@ bool Game::pollEvents() {
 				// files and the video placement differ between them.
 				_debug_drawRects = !_debug_drawRects;
 				debug("target rectangles %s", _debug_drawRects ? "on" : "off");
+			} else if (event.kbd.keycode == Common::KEYCODE_F6) {
+				// No lives are ever lost while this is on. Also settable at
+				// launch with god_mode=true in the target's ini section.
+				_debug_godMode = !_debug_godMode;
+				debug("god mode %s", _debug_godMode ? "on" : "off");
 			} else if (event.kbd.keycode >= Common::KEYCODE_0 && event.kbd.keycode <= Common::KEYCODE_6 && _vm->isHybrid()) {
 				// Section skip for testing, SPRM only - a real release must not
 				// lose its progress to a stray number key.

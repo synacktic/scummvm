@@ -82,9 +82,19 @@ private:
 	struct MapEntry {
 		Common::String file;
 		uint32 startUnit; // 29.97fps frames into that file
+		// The reels carry each take's perfect run; the miss consequence is a
+		// separate insert. When the scene clock passes tailAt (scene-relative)
+		// the pictures switch to tailFile - only a miss ever gets there.
+		Common::String tailFile;
+		uint32 tailStart = 0;
+		int32 tailAt = -1;
 	};
 	Common::HashMap<Common::String, MapEntry> _map;
 	uint32 _curStartUnit = 0;
+	int32 _tailAt = -1;            // scene-relative switch point, -1 = none
+	Common::String _tailFile;
+	uint32 _tailStart = 0;
+	uint32 _tailBase = 0;          // scene-relative offset the tail resumes at
 	AlgMpegDecoder *_mpeg = nullptr;
 
 	void loadMap();

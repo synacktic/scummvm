@@ -94,6 +94,21 @@ void GameSpacePiratesRM::loadMap() {
 			entry.file = path;
 			entry.startUnit = start;
 			_map[scene] = entry;
+		} else if (word == "TAIL") {
+			Common::String scene = tok.nextToken();
+			Common::String path = tok.nextToken();
+			uint32 start = atoi(tok.nextToken().c_str());
+			int32 at = atoi(tok.nextToken().c_str());
+			scene.toLowercase();
+			size_t slash = path.findLastOf('/');
+			if (slash != Common::String::npos) {
+				path = path.substr(slash + 1);
+			}
+			if (_map.contains(scene)) {
+				_map[scene].tailFile = path;
+				_map[scene].tailStart = start;
+				_map[scene].tailAt = at;
+			}
 		} else if (word == "END") {
 			break;
 		} else {
@@ -123,17 +138,31 @@ bool GameSpacePiratesRM::loadScene(Scene *scene) {
 	_mpeg->resetFrameCount();
 	_mpeg->loadVideoFile(Common::Path(it->_value.file), it->_value.startUnit);
 	_curStartUnit = it->_value.startUnit;
+	_tailBase = 0;
+	_tailAt = it->_value.tailAt;
+	_tailFile = it->_value.tailFile;
+	_tailStart = it->_value.tailStart;
 	return true;
 }
 
 uint32 GameSpacePiratesRM::getFrame(Scene *scene) {
-	// The decoder reports 29.97fps frames into the current file; sp.scn counts
-	// the same frames with the clip's first frame at scene->_startFrame.
+	// The decoder reports 29.97fps frames into the current file; the scene
+	// file counts the same frames with the clip's first frame at
+	// scene->_startFrame (plus the tail offset once the insert takes over).
 	const uint32 pos = _videoDecoder->getCurrentFrame();
-	if (pos <= _curStartUnit) {
-		return scene->_startFrame;
+	uint32 rel = _tailBase + (pos > _curStartUnit ? pos - _curStartUnit : 0);
+	if (_tailAt >= 0 && rel >= (uint32)_tailAt) {
+		// The shoot window has closed unanswered: from here the reel would
+		// show the perfect-run pictures, so switch to the miss insert. The
+		// scene clock carries straight on.
+		debug("scene tail: %s from %d", _tailFile.c_str(), _tailAt);
+		_tailBase = (uint32)_tailAt;
+		_curStartUnit = _tailStart;
+		_tailAt = -1;
+		_mpeg->loadVideoFile(Common::Path(_tailFile), _tailStart);
+		rel = _tailBase;
 	}
-	return scene->_startFrame + (pos - _curStartUnit);
+	return scene->_startFrame + rel;
 }
 
 // ---- coordinates ----------------------------------------------------------

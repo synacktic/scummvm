@@ -59,6 +59,10 @@ void GameSpacePiratesRM::init() {
 	// No border art: black pillars and the HUD strip instead.
 	_screen->fillRect(Common::Rect(0, 0, _screen->w, _screen->h), 0);
 	hudInit();
+
+	// Alignment review pass: show the target rectangles by default for now.
+	// F5 turns them off.
+	_debug_drawRects = true;
 }
 
 void GameSpacePiratesRM::loadMap() {

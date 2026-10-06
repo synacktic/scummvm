@@ -139,6 +139,13 @@ public:
 	 * IMediaSeeking in TIME_FORMAT_FRAME, so its script's numbers are frames.
 	 */
 	void setFrameUnits(bool on) { _frameUnits = on; }
+	/**
+	 * Keep reporting time after a loaded file reaches EOF, holding its final
+	 * picture until this position has passed. Hybrid scene scripts can then
+	 * retain a live interaction window when an equivalent reissue insert or
+	 * miss-outcome tail is shorter than the DOS scene.
+	 */
+	void setEndHold(uint32 position) { _endHoldPosition = position; }
 
 	AlgMpegDecoder();
 	~AlgMpegDecoder() override;
@@ -190,6 +197,10 @@ private:
 	uint32 _sceneUnit = 1;
 	uint32 _framesDecoded = 0;
 	bool _ended = false;
+	uint32 _endHoldPosition = 0;
+	uint32 _endHoldFrom = 0;
+	mutable uint32 _endHoldStartMs = 0;
+	mutable uint32 _endHoldPauseStartMs = 0;
 	/** VideoDecoder's pause is counted, so track our own state - see pauseAudio(). */
 	mutable bool _paused = false;
 };

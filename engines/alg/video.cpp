@@ -440,6 +440,10 @@ void AlgMpegDecoder::loadVideoRange(uint32 start, uint32 end) {
 	_positionBias = 0;
 	_clipFrames = 0;
 	_ended = false;
+	_endHoldPosition = 0;
+	_endHoldFrom = 0;
+	_endHoldStartMs = 0;
+	_endHoldPauseStartMs = 0;
 
 	if (!_input) {
 		warning("AlgMpegDecoder: no input file set");
@@ -471,7 +475,7 @@ void AlgMpegDecoder::loadVideoRange(uint32 start, uint32 end) {
 }
 
 void AlgMpegDecoder::getNextFrame() {
-	if (!_mpeg) {
+	if (!_mpeg || _paused) {
 		return;
 	}
 
@@ -500,6 +504,19 @@ void AlgMpegDecoder::getNextFrame() {
 		// endOfVideo() is the real signal: once the clip is spent needsUpdate()
 		// goes false, so decodeNextFrame() is never reached to report it.
 		if (_clip && (_ended || _mpeg->endOfVideo())) {
+			if (_endHoldPosition && _position <= _endHoldPosition) {
+				if (_endHoldStartMs == 0) {
+					_endHoldStartMs = g_system->getMillis();
+					_endHoldFrom = _position;
+				}
+				const uint32 elapsed = g_system->getMillis() - _endHoldStartMs;
+				const uint32 advance = _frameUnits
+					? (uint32)(((uint64)elapsed * 30) / 1001)
+					: (uint32)(((uint64)elapsed * _bytesPerSecond) /
+					           (1000 * _sceneUnit));
+				_position = MIN(_endHoldPosition + 1, _endHoldFrom + advance);
+				return;
+			}
 			// Push past the scene's end bound so the game loop's
 			// "current <= endFrame" test finally fails; landing exactly on it
 			// would leave the scene running for ever.
@@ -572,7 +589,10 @@ void AlgMpegDecoder::skipNumberOfFrames(uint32 num) {
 }
 
 bool AlgMpegDecoder::isFinished() const {
-	return _ended || !_mpeg || _mpeg->endOfVideo();
+	if (!_mpeg)
+		return true;
+	const bool streamEnded = _ended || _mpeg->endOfVideo();
+	return streamEnded && (!_endHoldPosition || _position > _endHoldPosition);
 }
 
 void AlgMpegDecoder::pauseAudio(bool pause) const {
@@ -580,6 +600,13 @@ void AlgMpegDecoder::pauseAudio(bool pause) const {
 	// VideoDecoder::pauseVideo() counts its pauses - so passing true repeatedly
 	// stacks the pause level and the picture never resumes. Only act on a change.
 	if (_mpeg && pause != _paused) {
+		const uint32 now = g_system->getMillis();
+		if (pause && _endHoldStartMs) {
+			_endHoldPauseStartMs = now;
+		} else if (!pause && _endHoldPauseStartMs) {
+			_endHoldStartMs += now - _endHoldPauseStartMs;
+			_endHoldPauseStartMs = 0;
+		}
 		_mpeg->pauseVideo(pause);
 		_paused = pause;
 	}

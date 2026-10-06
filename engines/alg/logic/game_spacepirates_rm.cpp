@@ -137,6 +137,7 @@ bool GameSpacePiratesRM::loadScene(Scene *scene) {
 	      span, _sceneExpectMs);
 	_mpeg->resetFrameCount();
 	_mpeg->loadVideoFile(Common::Path(it->_value.file), it->_value.startUnit);
+	_mpeg->setEndHold(it->_value.startUnit + span);
 	_curStartUnit = it->_value.startUnit;
 	_tailBase = 0;
 	_tailAt = it->_value.tailAt;
@@ -160,6 +161,8 @@ uint32 GameSpacePiratesRM::getFrame(Scene *scene) {
 		_curStartUnit = _tailStart;
 		_tailAt = -1;
 		_mpeg->loadVideoFile(Common::Path(_tailFile), _tailStart);
+		const uint32 sceneSpan = scene->_endFrame - scene->_startFrame;
+		_mpeg->setEndHold(_tailStart + sceneSpan - _tailBase);
 		rel = _tailBase;
 	}
 	return scene->_startFrame + rel;

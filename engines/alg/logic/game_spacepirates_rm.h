@@ -29,7 +29,7 @@ namespace Alg {
 /**
  * SPRM: our own hybrid build of Space Pirates, for testing the DOS release's
  * logic against the Windows release's footage. NOT a real release and never
- * to be upstreamed - the DOS game (spmpeg.scn) is the only source of truth.
+ * to be upstreamed - the DOS game (SP.SCN) is the only source of truth.
  *
  * The scene file is the real DOS release's sp.scn, verbatim, so every scene
  * and zone bound stays in its own units: 29.97fps master frames, three per
